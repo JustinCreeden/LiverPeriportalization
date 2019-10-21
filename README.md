@@ -4,7 +4,6 @@
 
 TODO
 
-***
 ### Analyses & Scripts
 #### Analysing transcriptom of CCL4 experiment (Fig. 1 and 2)
 Analysis script available [here](https://github.com/saezlab/LiverZonation/blob/master/analyses/ccl4_analysis.Rmd).
