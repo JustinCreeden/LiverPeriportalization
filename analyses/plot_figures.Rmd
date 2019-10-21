@@ -1,0 +1,918 @@
+---
+title: "Script to plot individual figures"
+author: "Christian Holland"
+date: "6/23/2019"
+output: html_document
+---
+
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(cowplot)
+library(tidylog)
+library(RWTHColorPalette) # devtools::install_github("christianholland/RWTHColorPalette")
+library(ggpubr)
+library(UpSetR)
+library(VennDiagram)
+library(lemon)
+library(gridExtra)
+library(lemon)
+library(scales)
+library(ggplotify)
+library(pheatmap)
+library(fgsea)
+
+
+options("tidylog.display" = list(print))
+theme_set(theme_cowplot())
+source("src/my_ggplot_themes.R")
+
+```
+### Utility functions
+```{r}
+make_gsea_plot = function(data, geneset, NES, padj, time, zonation, ...) {
+    stats_df = data %>%
+      rename(stat = statistic) %>%
+      arrange(-stat) %>% 
+      mutate(stat = stat/max(abs(stat)),
+             rank = row_number()) 
+    
+    rnk = stats_df$rank
+    
+    adj_stats = stats_df %>%
+      select(gene, stat) %>%
+      deframe()
+  
+    pathway = match(geneset, names(adj_stats)) %>%
+      na.omit() %>%
+      as.vector() %>%
+      unname() %>%
+      sort()
+    
+    
+    gseaRes = calcGseaStat(adj_stats, selectedStats = pathway, returnAllExtremes = TRUE)
+    bottoms = gseaRes$bottoms
+    tops = gseaRes$tops
+    n = length(adj_stats)
+    xs = as.vector(rbind(pathway - 1, pathway))
+    ys = as.vector(rbind(bottoms, tops))
+    
+    enrichment = tibble(rank = c(0, xs, n + 1), 
+                        running_sum = c(0, ys, 0))
+    ticks = tibble(rank = pathway, 
+                   max_rank = max(rnk))
+    color_df = enframe(rnk) %>%
+      mutate(bin = factor(ntile(value, 10)))
+    
+    tmp = enrichment %>% 
+      filter(abs(running_sum) == max(abs(running_sum)))
+    
+    
+    g1 = ggplot(data = enrichment, aes(x = rank, y = running_sum)) + 
+      geom_hline(yintercept = max(tops), colour = rwth_color("bordeaux"), linetype = "dashed") +
+      geom_hline(yintercept = min(bottoms), colour =rwth_color("bordeaux"), linetype = "dashed") +
+      geom_hline(yintercept = 0, colour = "black") +
+      geom_segment(aes(x = tmp$rank, y = 0, xend = tmp$rank, yend = tmp$running_sum), 
+                   linetype = "dashed") +
+      geom_line(size=1, color = if_else(zonation == "periportal", rwth_color("turquoise"), rwth_color("violet"))) +
+      lims(x = c(0, max(rnk) + 1)) +
+      labs(y = "Enrichment score") +
+      background_grid(major = "y", minor = "none", size.major = 0.4) +
+      theme(axis.line.x = element_blank(),
+            axis.title.x = element_blank(),
+            axis.ticks.x = element_blank(),
+            axis.text.x = element_blank(),
+            plot.margin=unit(c(1,1,-0.25,1), "cm"),
+            legend.position = "none",
+            title = element_text(size=16),
+            axis.text = element_text(size=14),
+            plot.title = element_text(hjust = 0.5)
+            #axis.line.y = element_blank()
+            ) +
+      annotate("text", x = c(1,6000,12000) , y = c(max(tops)+0.05, max(tops)+0.05, max(tops)+0.05), label = c(
+        str_c("NES:", round(NES,2), sep = " "),
+        str_c("FDR: ", scientific(padj,3), sep = " "),
+        str_c("n:", length(pathway), sep=" ")),
+        size=5, hjust = 0) +
+      ggtitle(str_c("Week:",time, "-", str_to_title(zonation), sep = " "))
+    
+    
+    g2 = ggplot(color_df, aes(x=value, y=1)) +
+      geom_tile(aes(color=value)) +
+      geom_segment(ticks, mapping = aes(x = rank, y = 1.51, xend = rank, yend = 3.51), size = 0.5, color=rwth_color("black"), alpha=0.5) +
+      scale_color_gradientn(colours = rwth_color(c("bordeaux", "orange", "yellow", "green", "blue", "violet"))) +
+      scale_x_continuous(position = "bottom",
+                         limits = c(0, max(rnk) +1),
+                         breaks = c(1,2000,4000,6000,8000,
+                                    10000,12000, 14000)
+                         ) +
+      theme(
+          # axis.line.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.y = element_text(color="white"),
+          axis.text.x = element_text(),
+          plot.margin=unit(c(-0.25,1,1,1), "cm"),
+          legend.position = "none",
+          # axis.ticks.x = element_blank(),
+          axis.line.x = element_blank(),
+          title = element_text(size=16),
+          axis.text = element_text(size=14)
+            ) +
+      labs(x = "Rank", y=NULL) 
+    
+    plot_grid(g1, g2, ncol = 1, align = "v", axis="l", rel_heights = c(2,1))
+}
+
+
+make_div_color_breaks = function(mat, low, mid, high) {
+  paletteLength = 100
+  colors = colorRampPalette(c(low, mid, high))(paletteLength)
+  breaks = c(seq(min(mat), 0, length.out=ceiling(paletteLength/2) + 1),
+             seq(max(mat)/paletteLength, max(mat), length.out=floor(paletteLength/2)))
+  
+  return(list(colors = colors, breaks = breaks))
+}
+
+```
+
+
+### CCL4 experiment
+#### Exploratory analysis
+##### PCA
+```{r}
+pca = readRDS("output/ccl4_experiment/pca.rds")
+explained = pca$explained
+coords = pca$coords %>%
+  mutate(dose = case_when(dose == "D0.6" ~ "0.6 ml/kg CCL4",
+                          dose == "oil" ~ "Oil",
+                          dose == "D0" ~ "Untreated")) %>%
+  mutate(dose = factor(dose, levels = c("Untreated", "Oil", "0.6 ml/kg CCL4")))
+
+my_palette = colorRampPalette(rwth_color(c("blue", "blue25")))
+
+pca_all_1_2 = ggplot(coords, aes(x=PC1, y=PC2, color=time, shape=dose)) +
+  geom_point(size=4) +
+  labs(x = str_c("PC1 (", explained[1], "%)"),
+       y = str_c("PC2 (", explained[2], "%)"),
+       color = "Time in weeks",
+       shape = "Treatment") +
+  my_theme(grid = "no") +
+  # scale_color_manual(values = rwth_color(rev(c("blue", "blue75", "blue50", "blue25")))) +
+  scale_color_manual(values = rev(my_palette(4))) +
+  scale_shape_manual(values = c(15,16,17), labels = c(expression("Untreated"), expression(Oil), expression(CCl['4']))) +
+  theme(
+    legend.position = "top",
+    legend.text.align = 0,
+    legend.box = "vertial",
+    legend.title.align = 0.5,
+    legend.box.just = "left")
+
+saveRDS(pca_all_1_2, "fig/ccl4_experiment/pca_all.rds")
+
+
+pca_all_1_2_text = ggplot(coords, aes(x=PC1, y=PC2, label=time, color=dose)) +
+  geom_text(size=5, alpha = 0.8) +
+  labs(x = str_c("PC1 (", explained[1], "%)"),
+       y = str_c("PC2 (", explained[2], "%)"),
+       color = "Treatment") +
+  my_theme(grid = "no") +
+  scale_color_manual(values = rwth_color(c("green", "red", "blue")), labels = c(expression("Untreated"), expression(Oil), expression(CCl['4']))) +
+  theme(
+    legend.position = "top",
+    legend.text.align = 0,
+    legend.box = "vertial",
+    legend.title.align = 0.5,
+    legend.box.just = "left")
+
+saveRDS(pca_all_1_2_text, "fig/ccl4_experiment/pca_all_text.rds")
+
+pca_time_1_2 = ggplot(coords, aes(x=PC1, y=PC2, color=time)) +
+  geom_point(size=4) +
+  labs(x = str_c("PC1 (", explained[1], "%)"),
+       y = str_c("PC2 (", explained[2], "%)"),
+       color = "Time in weeks") +
+  theme(legend.position = "top") +
+  my_theme(grid = "no") +
+  scale_color_manual(values = rwth_color(c("bordeaux", "orange", "green", "petrol")))
+
+saveRDS(pca_time_1_2, "fig/ccl4_experiment/pca_time.rds")
+
+pca_dose_1_2 = ggplot(coords, aes(x=PC1, y=PC2, color=dose)) +
+  geom_point(size=4) +
+  labs(x = paste0("PC1 (", explained[1], "%)"),
+       y = paste0("PC2 (", explained[2], "%)"),
+       color = "Treatment") +
+  theme(legend.position = "top") +
+  my_theme(grid = "no") +
+  scale_color_manual(values = rwth_color(c("violet", "turquoise", "red")), labels = c(expression("Untreated"), expression(Oil), expression(CCl['4']))) +
+  theme(legend.text = element_text(vjust = 0.5))
+
+saveRDS(pca_dose_1_2, "fig/ccl4_experiment/pca_dose.rds")
+```
+
+#### Differential gene expression analysis
+##### Overview
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time))) %>%
+  mutate(regulation = str_to_title(regulation)) %>%
+  mutate(regulation = factor(regulation, levels = c("Up", "Down", "No"))) %>%
+  mutate(time = fct_rev(time))
+
+# stacked barplot showing proportion of regulated genes
+deg_overview = limma_result %>% 
+  count(time, regulation) %>%
+  ggplot(aes(x = time, y=n, fill=regulation)) +
+  geom_bar( stat="identity", position="fill") +
+  scale_y_continuous(labels = scales::percent) +
+  coord_flip(ylim = c(0.9,1)) +
+  labs(x= "Time in weeks", y = NULL, fill = "Regulation") +
+  my_theme(grid = "x") +
+  scale_fill_manual(values = rwth_color(c("green", "red", "black50"))) +
+  theme(legend.position = "top")
+
+saveRDS(deg_overview, "fig/ccl4_experiment/deg_overview.rds")
+```
+##### Top 40 CCl4 genes
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time))) %>%
+  mutate(label = fct_inorder(str_c("Week", time, sep=" "))) %>%
+  mutate(regulation = str_to_title(regulation)) %>%
+  mutate(regulation = factor(regulation, levels = c("Up", "Down", "No"))) %>%
+  filter(regulation != "No") %>%
+  group_by(time, regulation) %>%
+  top_n(20, abs(logFC)) %>%
+  ungroup()
+
+up_8 = limma_result %>%
+  filter(time == 8 & regulation == "Up") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Up-regulated logFC") +
+  scale_fill_manual(values = rwth_color("green")) +
+  scale_y_continuous(position = "right", 
+                     breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  theme(legend.position = "none") +
+  coord_flip()
+
+
+down_8 = limma_result %>%
+  filter(time == 8 & regulation == "Down") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Down-regulated logFC") +
+  scale_fill_manual(values = rwth_color("red")) +
+  theme(legend.position = "none") + 
+  scale_x_discrete(position = "top") +
+  scale_y_reverse(breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  coord_flip()
+
+up_24 = limma_result %>%
+  filter(time == 24 & regulation == "Up") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Up-regulated logFC") +
+  scale_fill_manual(values = rwth_color("green")) +
+  scale_y_continuous(position = "right", 
+                     breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  theme(legend.position = "none") +
+  coord_flip()
+
+
+down_24 = limma_result %>%
+  filter(time == 24 & regulation == "Down") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Down-regulated logFC") +
+  scale_fill_manual(values = rwth_color("red")) +
+  theme(legend.position = "none") + 
+  scale_x_discrete(position = "top") +
+  scale_y_reverse(breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  coord_flip()
+
+up_48= limma_result %>%
+  filter(time == 48 & regulation == "Up") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Up-regulated logFC") +
+  scale_fill_manual(values = rwth_color("green")) +
+  scale_y_continuous(position = "right",
+                     breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  theme(legend.position = "none") +
+  coord_flip()
+
+
+down_48 = limma_result %>%
+  filter(time == 48 & regulation == "Down") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Down-regulated logFC") +
+  scale_fill_manual(values = rwth_color("red")) +
+  theme(legend.position = "none") + 
+  scale_x_discrete(position = "top") +
+  scale_y_reverse(breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  coord_flip()
+
+saveRDS(list(up_8 = up_8, down_8 = down_8, 
+             up_24 = up_24, down_24 = down_24,
+             up_48 = up_48, down_48 = down_48),
+             "fig/ccl4_experiment/top_ccl4_degs.rds")
+```
+
+##### Top 40 Oil genes
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time))) %>%
+  mutate(label = fct_inorder(str_c("Week", time, sep=" "))) %>%
+  mutate(regulation = str_to_title(regulation)) %>%
+  mutate(regulation = factor(regulation, levels = c("Up", "Down", "No"))) %>%
+  filter(regulation != "No") %>%
+  group_by(time, regulation) %>%
+  top_n(20, abs(logFC)) %>%
+  ungroup()
+
+up_8 = limma_result %>%
+  filter(time == 8 & regulation == "Up") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Up-regulated logFC") +
+  scale_fill_manual(values = rwth_color("green")) +
+  scale_y_continuous(position = "right",
+                     breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  theme(legend.position = "none") +
+  coord_flip()
+
+
+down_8 = limma_result %>%
+  filter(time == 8 & regulation == "Down") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Down-regulated logFC") +
+  scale_fill_manual(values = rwth_color("red")) +
+  theme(legend.position = "none") + 
+  scale_x_discrete(position = "top") +
+  scale_y_reverse(breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  coord_flip()
+
+up_48= limma_result %>%
+  filter(time == 48 & regulation == "Up") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Up-regulated logFC") +
+  scale_fill_manual(values = rwth_color("green")) +
+  scale_y_continuous(position = "right",
+                     breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  theme(legend.position = "none") +
+  coord_flip()
+
+
+down_48 = limma_result %>%
+  filter(time == 48 & regulation == "Down") %>%
+  ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
+  geom_col() +
+  labs(x=NULL, y="Down-regulated logFC") +
+  scale_fill_manual(values = rwth_color("red")) +
+  theme(legend.position = "none") + 
+  scale_x_discrete(position = "top") +
+  scale_y_reverse(breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
+  coord_flip()
+
+saveRDS(list(up_8 = up_8, down_8 = down_8, 
+             up_48 = up_48, down_48 = down_48),
+             "fig/ccl4_experiment/top_oil_degs.rds")
+
+```
+
+##### Overlap of top 40 CCL4 genes
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time))) %>%
+  mutate(label = fct_inorder(str_c("Week", time, sep=" "))) %>%
+  mutate(regulation = str_to_title(regulation)) %>%
+  mutate(regulation = factor(regulation, levels = c("Up", "Down", "No"))) %>%
+  filter(regulation != "No")
+
+limma_result %>%
+  unite(key, label, regulation, sep="-") %>%
+  group_by(key) %>%
+  top_n(20, abs(logFC)) %>%
+  select(gene, key) %>%
+  mutate(val = 1) %>%
+  spread(key, val, fill=0) %>%
+  data.frame(row.names = 1, check.names = F, stringsAsFactors = F) %>%
+  UpSetR::upset(nsets = 6, text.scale = 2, point.size = 4)
+```
+
+##### Overlap of top 40 Oil genes
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time))) %>%
+  mutate(label = fct_inorder(str_c("Week", time, sep=" "))) %>%
+  mutate(regulation = str_to_title(regulation)) %>%
+  mutate(regulation = factor(regulation, levels = c("Up", "Down", "No"))) %>%
+  filter(regulation != "No") %>%
+  group_by(time, regulation) %>%
+  top_n(20, abs(logFC)) %>%
+  ungroup()
+
+# overlap
+limma_result %>%
+  unite(label, label, regulation, sep = "-") %>%
+  mutate(val = 1) %>%
+  select(gene, label, val) %>%
+  spread(label, val, fill=0) %>%
+  data.frame(row.names = 1, check.names = F, stringsAsFactors = F) %>%
+  UpSetR::upset(nsets = 4, text.scale = 2, point.size = 4)
+
+```
+
+
+##### CCL4 volcano plot (and p-value histogram)
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time))) %>%
+  mutate(label = fct_inorder(str_c("Week", time, sep=" "))) %>%
+  mutate(regulation = str_to_title(regulation)) %>%
+  mutate(regulation = factor(regulation, levels = c("Up", "Down", "No")))
+
+deg_count = limma_result %>%
+  filter(regulation != "No") %>%
+  add_count(time, label, regulation) %>%
+  mutate(logFC = case_when(regulation == "Up" ~ 0.75*max(logFC),
+                          regulation == "Down" ~ 0.75*min(logFC)),
+         pval = 0.4) %>%
+  distinct(label, n, logFC, pval, regulation)
+
+# ccl4
+volcano_plot_ccl4 = limma_result %>%
+  ggplot(aes(x=logFC, y=-log10(pval), color=regulation, alpha = regulation)) +
+  geom_point(size=2) +
+  facet_rep_wrap(~label) +
+  my_theme(grid = "y") +
+  scale_color_manual(values = rwth_color(c("green", "red", "black50"))) +
+  scale_alpha_manual(values = c(0.7,0.7,0.2), guide ="none") +
+  labs(y = expression(-log['10']*"(p-value)"), color = "Regulation") +
+  geom_text(data = deg_count, aes(label = n), size=14/(14/5), show.legend = F) +
+  theme(legend.position = "top")
+
+saveRDS(volcano_plot_ccl4, "fig/ccl4_experiment/volcano_plot_ccl4.rds")
+
+p_hist_ccl4 = limma_result %>%
+  ggplot(aes(x=pval)) +
+  geom_histogram(bins = 20, center = 0.025, color="white") +
+  facet_grid(~label) +
+  labs(x = "p-value", y="Count") +
+  my_theme(grid = "y")
+
+saveRDS(p_hist_ccl4, "fig/ccl4_experiment/p_hist_ccl4.rds")
+```
+
+##### Oil volcano plot (and p-value histogram)
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time))) %>%
+  mutate(label = fct_inorder(str_c("Week", time, sep=" "))) %>% 
+  mutate(regulation = str_to_title(regulation)) %>%
+  mutate(regulation = factor(regulation, levels = c("Up", "Down", "No")))
+
+deg_count = limma_result %>%
+  filter(regulation != "No") %>%
+  add_count(time, label, regulation) %>%
+  mutate(logFC = case_when(regulation == "Up" ~ 0.75*max(logFC),
+                          regulation == "Down" ~ 0.75*min(logFC)),
+         pval = 0.4) %>%
+  distinct(label, n, logFC, pval, regulation)
+
+volcano_plot_oil = limma_result %>%
+  ggplot(aes(x=logFC, y=-log10(pval), color=regulation, alpha = regulation)) +
+  geom_point(size=2) +
+  facet_rep_wrap(~label, repeat.tick.labels = F) +
+  my_theme(grid = "y") +
+  scale_color_manual(values = rwth_color(c("green", "red", "black50"))) +
+  scale_alpha_manual(values = c(0.7,0.7,0.2), guide ="none") +
+  labs(y = expression(-log['10']*"(p-value)"), color = "Regulation") +
+  geom_text(data = deg_count, aes(label = n), size=14/(14/5), show.legend = F) +
+  theme(legend.position = "top")
+
+saveRDS(volcano_plot_oil, "fig/ccl4_experiment/volcano_plot_oil.rds")
+
+p_hist_oil = limma_result %>%
+  ggplot(aes(x=pval)) +
+  geom_histogram(bins = 20, center = 0.025, color="white") +
+  facet_rep_wrap(~label, repeat.tick.labels = F) +
+  labs(x = "p-value", y="Count") +
+  my_theme(grid = "y")
+
+saveRDS(p_hist_oil, "fig/ccl4_experiment/p_hist_oil.rds")
+```
+
+##### PROGENy heatmap CCL4
+```{r}
+progeny_scores = readRDS("output/ccl4_experiment/progeny_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  transmute(pathway, activity, time = str_c("Week", time, sep = " ")) %>%
+  mutate(time = factor(time, levels = c("Week 8", "Week 24", "Week 48")))
+
+mat = progeny_scores %>%
+  spread(time, activity) %>%
+  data.frame(row.names = 1, check.names = F, stringsAsFactors = F)
+
+color_breaks = make_div_color_breaks(mat, rwth_color("blue"), "white", rwth_color("green"))
+
+progeny_ccl4 = pheatmap(mat,fontsize=12, fontsize_row = 12, 
+                        color=color_breaks$colors, breaks = color_breaks$breaks, 
+                        angle_col = 45, cluster_cols = F, border_color = NA,
+                        cellwidth = 25) %>%
+  as.ggplot()
+
+saveRDS(progeny_ccl4, "fig/ccl4_experiment/progeny_ccl4.rds")
+```
+
+##### PROGENy heatmap Oil
+```{r}
+progeny_scores = readRDS("output/ccl4_experiment/progeny_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  transmute(pathway, activity, time = str_c("Week:", time, sep = " ")) %>%
+  mutate(time = factor(time, levels = c("Week: 8", "Week: 24", "Week: 48")))
+
+mat = progeny_scores %>%
+  spread(time, activity) %>%
+  data.frame(row.names = 1, check.names = F, stringsAsFactors = F)
+
+color_breaks = make_div_color_breaks(mat, rwth_color("blue"), "white", rwth_color("green"))
+
+progeny_oil = pheatmap(mat,fontsize=12, fontsize_row = 12, 
+                       color=color_breaks$colors, breaks = color_breaks$breaks, 
+                       angle_col = 45, cluster_cols = F, border_color = NA,
+                       cellwidth = 25) %>%
+  as.ggplot()
+
+saveRDS(progeny_oil, "fig/ccl4_experiment/progeny_oil.rds")
+```
+
+
+##### DoRothEA heatmap CCL4
+```{r}
+dorothea_scores = readRDS("output/ccl4_experiment/dorothea_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  transmute(tf, confidence, activity, time = str_c("Week", time, sep = " ")) %>%
+  mutate(time = factor(time, levels = c("Week 8", "Week 24", "Week 48")))
+
+mat = dorothea_scores %>%
+  group_by(tf) %>%
+  mutate(var = var(activity)) %>%
+  mutate(mean = mean(activity)) %>%
+  mutate(importance = mean) %>%
+  ungroup() %>%
+  filter(confidence %in% c("A", "B")) %>%
+  group_by(direction = sign(importance)) %>%
+  top_n(45, abs(importance)) %>% # 3 (for each time point) * 15
+  ungroup() %>%
+  select(-confidence, -var, -mean, -importance, -direction) %>%
+  spread(time, activity) %>%
+  data.frame(row.names = 1, check.names = F, stringsAsFactors = F)
+
+color_breaks = make_div_color_breaks(mat, rwth_color("blue"), "white", rwth_color("green"))
+
+dorothea_ccl4 = pheatmap(mat,fontsize=12, fontsize_row = 8, 
+                        color=color_breaks$colors, breaks = color_breaks$breaks, 
+                        angle_col = 45, cluster_cols = F, border_color = NA,
+                        cellwidth = 25) %>%
+  as.ggplot()
+
+saveRDS(dorothea_ccl4, "fig/ccl4_experiment/dorothea_ccl4.rds")
+```
+
+##### DoRothEA heatmap Oil
+```{r}
+dorothea_scores = readRDS("output/ccl4_experiment/dorothea_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  transmute(tf, confidence, activity, time = str_c("Week", time, sep = " ")) %>%
+  mutate(time = factor(time, levels = c("Week 8", "Week 24", "Week 48")))
+
+mat = dorothea_scores %>%
+  group_by(tf) %>%
+  mutate(var = var(activity)) %>%
+  mutate(mean = mean(activity)) %>%
+  mutate(importance = mean) %>%
+  ungroup() %>%
+  filter(confidence %in% c("A", "B")) %>%
+  group_by(direction = sign(importance)) %>%
+  top_n(45, abs(importance)) %>% # 3 (for each time point) * 15
+  ungroup() %>%
+  select(-confidence, -var, -mean, -importance, -direction) %>%
+  spread(time, activity) %>%
+  data.frame(row.names = 1, check.names = F, stringsAsFactors = F)
+
+color_breaks = make_div_color_breaks(mat, rwth_color("blue"), "white", rwth_color("green"))
+
+dorothea_oil = pheatmap(mat,fontsize=12, fontsize_row = 8, 
+                        color=color_breaks$colors, breaks = color_breaks$breaks, 
+                        angle_col = 45, cluster_cols = F, border_color = NA,
+                        cellwidth = 25) %>%
+  as.ggplot()
+
+saveRDS(dorothea_ccl4, "fig/ccl4_experiment/dorothea_oil.rds")
+```
+
+##### GO heatmap CCL4
+```{r}
+gsea_res = readRDS("output/ccl4_experiment/go_enrichment.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  transmute(geneset, category_subcode, pval, padj, NES, time = str_c("Week", time, sep = " ")) %>%
+  mutate(time = factor(time, levels = c("Week 8", "Week 24", "Week 48")),
+         geneset = str_remove(geneset, "GO_"))
+
+df = gsea_res %>%
+  group_by(geneset) %>%
+  mutate(mean_NES = mean(NES),
+         mean_padj = mean(padj),
+         var_NES = var(NES),
+         importance = mean_NES) %>%
+  group_by(direction = sign(importance)) %>%
+  top_n(45, abs(importance)) %>%
+  ungroup() %>%
+  select(-c(pval, padj, mean_NES, mean_padj, var_NES, importance, direction))
+
+anno = df %>%
+  distinct(geneset, category_subcode) %>%
+  data.frame(row.names = 1, check.names = F, stringsAsFactors = F)
+
+mat = df %>%
+  select(-category_subcode) %>%
+  spread(time, NES) %>%
+  data.frame(row.names = 1, check.names = F, stringsAsFactors = F)
+
+
+color_breaks = make_div_color_breaks(mat, rwth_color("blue"), "white", rwth_color("green"))
+
+go_ccl4 = pheatmap(mat,fontsize=12, fontsize_row = 8, 
+                        color=color_breaks$colors, breaks = color_breaks$breaks, 
+                        angle_col = 45, cluster_cols = F, border_color = NA,
+                        cellwidth = 25, annotation_row = anno) %>%
+  as.ggplot()
+
+ggsave(go_ccl4, filename = "blub.pdf", width = 10, height = 10)
+```
+
+
+### Zonation Analysis
+#### Overview of individual gene sets
+```{r}
+gene_sets = list.files("output/zonation/individual_gene_sets", pattern = "gene_sets", full.names = T) %>%
+  map_df(readRDS) %>%
+  filter(source != "halpern2018")
+
+geneset_overview = gene_sets %>%
+  count(source, zonation) %>%
+  mutate_if(is.character, str_to_title) %>%
+  ggplot(aes(x=source, y=n, fill=zonation)) +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  labs(x = "Literature source", y="Count", fill="Zonation") +
+  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  my_theme("y") +
+  theme(legend.position = "top")
+
+saveRDS(geneset_overview, "fig/zonation/geneset_overview.rds")
+```
+
+#### Overlap of individual gene set
+```{r}
+gene_sets = list.files("output/zonation/individual_gene_sets", pattern = "gene_sets", full.names = T) %>%
+  map_df(readRDS) %>%
+  filter(source != "halpern2018")
+
+# periportal
+periportal = gene_sets %>% 
+  filter(zonation == "periportal") %>%
+  select(gene, source)
+
+pp_h = periportal %>% filter(source == "halpern")
+pp_b = periportal %>% filter(source == "braeuning")
+pp_s = periportal %>% filter(source == "saito")
+
+pp_hb = periportal %>% 
+  filter(source %in% c("halpern", "braeuning")) %>% 
+  group_split(source, keep = F) %>% 
+  reduce(intersect)
+pp_bs = periportal %>% 
+  filter(source %in% c("braeuning", "saito")) %>%
+  group_split(source, keep = F) %>% 
+  reduce(intersect)
+pp_hs = periportal %>% 
+  filter(source %in% c("halpern", "saito")) %>% 
+  group_split(source, keep = F) %>% 
+  reduce(intersect)
+
+pp_hbs = periportal %>% 
+  group_split(source, keep = F) %>% 
+  reduce(intersect)
+
+grid.newpage()
+pp_venn = draw.triple.venn(
+  area1 = nrow(pp_h), area2 = nrow(pp_b), area3 = nrow(pp_s), 
+  n12 = nrow(pp_hb), n23 = nrow(pp_bs), n13 = nrow(pp_hs), 
+  n123 = nrow(pp_hbs),
+  category = c("Halpern","Braeuning", "Saito"),
+  lty = "blank",
+  cex = 1,
+  fontfamily = rep("sans", 7),
+  fill = rwth_color(c("purple", "orange", "petrol")),
+  cat.col = rwth_color(c("purple", "orange", "petrol")),
+  cat.cex = 1.1,
+  cat.fontfamily = rep("sans", 3)
+) %>%
+  as_ggplot() %>%
+  grid.arrange(top = textGrob("Periportal", gp=gpar(fontsize=15, fontface = "bold")))
+
+saveRDS(pp_venn, "fig/zonation/pp_venn.rds")
+
+# pericentral
+pericentral = gene_sets %>% 
+  filter(zonation == "pericentral") %>%
+  select(gene, source)
+
+pc_h = pericentral %>% filter(source == "halpern")
+pc_b = pericentral %>% filter(source == "braeuning")
+pc_s = pericentral %>% filter(source == "saito")
+
+pc_hb = pericentral %>% 
+  filter(source %in% c("halpern", "braeuning")) %>% 
+  group_split(source, keep = F) %>% 
+  reduce(intersect)
+pc_bs = pericentral %>% 
+  filter(source %in% c("braeuning", "saito")) %>%
+  group_split(source, keep = F) %>% 
+  reduce(intersect)
+pc_hs = pericentral %>% 
+  filter(source %in% c("halpern", "saito")) %>% 
+  group_split(source, keep = F) %>% 
+  reduce(intersect)
+
+pc_hbs = pericentral %>% 
+  group_split(source, keep = F) %>% 
+  reduce(intersect)
+
+grid.newpage()
+pc_venn = draw.triple.venn(
+  area1 = nrow(pc_h), area2 = nrow(pc_b), area3 = nrow(pc_s), 
+  n12 = nrow(pc_hb), n23 = nrow(pc_bs), n13 = nrow(pc_hs), 
+  n123 = nrow(pc_hbs),
+  category = c("Halpern","Braeuning", "Saito"),
+  fontfamily = rep("sans", 7),
+  lty = "blank",
+  cex = 1,
+  fill = rwth_color(c("purple", "orange", "petrol")),
+  cat.col = rwth_color(c("purple", "orange", "petrol")),
+  cat.cex = 1.1,
+  cat.fontfamily = rep("sans", 3)
+) %>% 
+  as_ggplot() %>%
+  grid.arrange(top = textGrob("Pericentral", gp=gpar(fontsize=15, fontface = "bold")))
+
+saveRDS(pc_venn, "fig/zonation/pc_venn.rds")
+```
+
+#### Enrichment of consensus gene sets with CCl4 signature
+```{r}
+gsea_res_ccl4 = readRDS("output/zonation/consensus_and_ind_gsea_res.rds") %>%
+  filter(contrast_reference == "ccl4",
+         source == "consensus")
+
+consensus_gsea_ccl4_bar = gsea_res_ccl4 %>% 
+  mutate(zonation = str_to_title(zonation)) %>%
+  ggplot(aes(x=time, y=NES, fill=zonation)) +
+  geom_col() +
+  # coord_flip() +
+  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  labs(x = "Time in weeks", fill = "Zonation") +
+  theme(legend.position = "top") +
+  geom_text(aes(label = str_c("FDR:", scientific(padj,3), sep = " "), y=0.95*NES), color="white", position=position_dodge(width=0), size=4.5) +
+  my_theme(grid = "y")
+
+saveRDS(consensus_gsea_ccl4_bar, "fig/zonation/consensus_pc_pp_gsea_ccl4.rds")
+```
+
+#### Enrichment of consensus gene sets with Oil signature
+```{r}
+gsea_res_oil = readRDS("output/zonation/consensus_and_ind_gsea_res.rds") %>%
+  filter(contrast_reference == "oil",
+         source == "consensus")
+
+consensus_gsea_oil_bar = gsea_res_oil %>% 
+  mutate(zonation = str_to_title(zonation)) %>%
+  ggplot(aes(x=time, y=NES, fill=zonation)) +
+  geom_col() +
+  # coord_flip() +
+  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  labs(x = "Time in weeks", fill = "Zonation") +
+  theme(legend.position = "top") +
+  geom_text(aes(label = str_c("FDR:", scientific(padj,3), sep = " "), y=0.95*NES), color="white", position=position_dodge(width=0), size=4.5) +
+  my_theme(grid = "y")
+
+saveRDS(consensus_gsea_oil_bar, "fig/zonation/consensus_pc_pp_gsea_oil.rds")
+```
+
+#### GSEA plots CCL4
+```{r}
+gsea_res_ccl4 = readRDS("output/zonation/consensus_and_ind_gsea_res.rds") %>%
+  filter(contrast_reference == "ccl4",
+         source == "consensus")
+
+zonation_gene_sets = readRDS("output/zonation/consensus_gene_sets.rds") %>%
+  group_by(zonation) %>%
+  summarise(gene_set = list(gene)) %>%
+  deframe()
+
+gsea_plots_ccl4 = gsea_res_ccl4 %>% 
+  inner_join(enframe(zonation_gene_sets, "zonation", "geneset"), by="zonation") %>%
+  mutate(gsea_plots = pmap(., .f = make_gsea_plot))
+
+saveRDS(gsea_plots_ccl4, "fig/zonation/gsea_plots_ccl4.rds")
+```
+
+#### GSEA plots of Oil
+```{r}
+gsea_res_oil = readRDS("output/zonation/consensus_and_ind_gsea_res.rds") %>%
+  filter(contrast_reference == "oil",
+         source == "consensus")
+
+zonation_gene_sets = readRDS("output/zonation/consensus_gene_sets.rds") %>%
+  group_by(zonation) %>%
+  summarise(gene_set = list(gene)) %>%
+  deframe()
+
+gsea_plots_oil = gsea_res_oil %>% 
+  inner_join(enframe(zonation_gene_sets, "zonation", "geneset"), by="zonation") %>%
+  mutate(gsea_plots = pmap(., .f = make_gsea_plot))
+
+saveRDS(gsea_plots_oil, "fig/zonation/gsea_plots_oil.rds")
+```
+
+#### Enrichment of individual gene sets with ccl4 signature
+```{r}
+gsea_res_ccl4_ind = readRDS("output/zonation/consensus_and_ind_gsea_res.rds")%>%
+  filter(contrast_reference == "ccl4",
+         source != "consensus")
+
+ind_gsea_ccl4_bar = gsea_res_ccl4_ind %>% 
+  mutate(zonation = str_to_title(zonation),
+         source = str_to_title(source)) %>%
+  ggplot(aes(x=time, y=NES, fill=zonation)) +
+  geom_col(position=position_dodge()) +
+  facet_rep_wrap(~source) +
+  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  labs(x = "Time in weeks", fill = "Zonation") +
+  theme(legend.position = "top") +
+  # geom_text(aes(label = str_c("FDR:", scientific(padj,3), sep = " "), y=0.75*NES), color="white", position=position_dodge(width=0.9), size=4, angle = -90) +
+  geom_text(aes(label = gtools::stars.pval(padj), y=0.9*NES), color="white", position=position_dodge(width=0.9), size=5) +
+  my_theme("y")
+
+saveRDS(ind_gsea_ccl4_bar, "fig/zonation/ind_pc_pp_gsea_ccl4.rds")
+```
+
+#### Enrichment of individual gene sets with oil signature
+```{r}
+gsea_res_oil_ind = readRDS("output/zonation/consensus_and_ind_gsea_res.rds")%>%
+  filter(contrast_reference == "oil",
+         source != "consensus")
+
+ind_gsea_oil_bar = gsea_res_oil_ind %>% 
+  mutate(zonation = str_to_title(zonation),
+         source = str_to_title(source)) %>%
+  ggplot(aes(x=time, y=NES, fill=zonation)) +
+  geom_col(position=position_dodge()) +
+  facet_rep_wrap(~source) +
+  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  labs(x = "Time in weeks", fill = "Zonation") +
+  theme(legend.position = "top") +
+  # geom_text(aes(label = str_c("FDR:", scientific(padj,3), sep = " "), y=0.75*NES), color="white", position=position_dodge(width=0.9), size=4, angle = -90) +
+  geom_text(aes(label = gtools::stars.pval(padj), y=0.9*NES), color="white", position=position_dodge(width=0.9), size=5) +
+  my_theme("y")
+
+saveRDS(ind_gsea_oil_bar, "fig/zonation/ind_pc_pp_gsea_oil.rds")
+```
+

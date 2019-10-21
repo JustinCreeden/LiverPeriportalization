@@ -1,0 +1,221 @@
+---
+title: "Script to create additional tables/materials"
+author: "Christian Holland"
+date: "6/23/2019"
+output: html_document
+---
+
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(tidylog)
+
+options("tidylog.display" = list(print))
+
+f = c("catenin", 
+      "hedgehog", "sonic", "indian", "desert", "ptch", "gli", 
+      "hippo",
+      "hif",
+      "yap",
+      "yes",
+      "glucagon",
+      "hnf",
+      "dicer", 
+      "wnt")
+```
+### Zonation analysis
+
+### Consensus pericentral/periportal gene set
+```{r}
+consensus_genesets = readRDS("output/zonation/consensus_gene_sets.rds")
+
+# save consensus pericentral gene set
+consensus_genesets %>% 
+  filter(zonation == "pericentral") %>%
+  write_csv("paper/material/consensus_pericentral_geneset.csv")
+
+# save consensus periportal gene set
+consensus_genesets %>% 
+  filter(zonation == "periportal") %>%
+  write_csv("paper/material/consensus_periportal_geneset.csv")
+```
+
+#### Characterization of pericentral/periportal gene sets
+```{r}
+df = readRDS("output/zonation/ora_result_of_consensus_genesets.rds")
+
+df %>%
+  arrange(fdr) %>%
+  filter(fdr <= 0.01) %>%
+  select(zonation, geneset, category_subcode, p.value, fdr) %>%
+  write_csv("paper/material/genesets_overrepresented_in_pc_pp_genesets.csv")
+```
+
+
+#### Overlapping pericentral/periportal gene sets with CCL4 signatures across all time points
+```{r}
+overlap_coef_df = readRDS("output/zonation/overlap_ccl4_oil_sig_with_pc_pp_genesets.rds") %>%
+  filter(contrast_reference == "ccl4")
+
+overlap_coef_df %>% 
+  unnest(overlap) %>%
+  unnest(overlap) %>%
+  distinct(zonation, regulation, gene = overlap) %>%
+  add_count(regulation, zonation) %>%
+  arrange(zonation, regulation) %>%
+  write_csv("paper/material/overlap_pc_pp_geneset_with_ccl4_signature.csv")
+```
+
+#### Characterization of overlapping pericentral/periportal gene sets with CCL4 signatures across all time points
+```{r}
+df = readRDS("output/zonation/ora_result_of_overlap.rds") %>%
+  filter(contrast_reference == "ccl4")
+
+df %>%
+  arrange(fdr) %>%
+  filter(fdr <= 0.1) %>%
+  select(regulation, zonation, geneset, category_subcode, p.value, fdr) %>%
+  write_csv("paper/material/genesets_overrepresented_in_overlap.csv")
+```
+
+
+#### Expression profiles of overlapping pericentral/periportal gene sets with CCL4 signature across all time points
+```{r}
+expr = readRDS("output/ccl4_experiment/expression_data_tidy.rds")
+meta_df = readRDS("data/ccl4_experiment/meta_df.rds") %>%
+  filter(dose != "oil") %>%
+  group_by(group) %>%
+  mutate(rep = row_number()) %>%
+  ungroup() %>%
+  unite(key, group, rep) %>%
+  select(sample, key)
+overlap_coef_df = readRDS("output/zonation/overlap_ccl4_oil_sig_with_pc_pp_genesets.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  unnest(overlap) %>%
+  unnest(overlap) %>%
+  distinct(zonation, regulation, gene=overlap)
+
+expr_profiles = expr %>%
+  inner_join(overlap_coef_df,by="gene") %>%
+  inner_join(meta_df, by="sample") %>%
+  arrange(time) %>%
+  mutate(key = fct_inorder(key)) %>%
+  select(-c(group, sample, time, dose)) %>%
+  spread(key, expression) %>%
+  arrange(zonation, regulation) 
+
+expr_profiles %>%
+  write_csv("paper/material/expression_profiles_of_overlapping_pc_pp_genes_with_ccl4_sig.csv")
+
+
+expr_profiles %>%
+  gather(sample, expression, -gene, -zonation, -regulation) %>%
+  separate(sample, into=c("sample", "rep"), sep = "_") %>%
+  mutate(sample = factor(sample, levels = c("wt", "D0.6.8", "D0.6.24", "D0.6.48"))) %>%
+  group_by(gene, regulation, zonation, sample) %>%
+  summarise(mean_expression = mean(expression)) %>%
+  ungroup() %>%
+  ggplot(aes(x=sample, y=mean_expression, group=gene)) +
+  geom_line(alpha=.75) +
+  facet_grid(regulation~zonation)
+
+
+```
+
+#### Pathway activities of CCL4 signature for every timepoint
+```{r}
+readRDS("output/ccl4_experiment/progeny_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  select(pathway, activity, time) %>%
+  spread(time, activity) %>%
+  write_csv("paper/material/pathway_activities_ccl4.csv")
+```
+
+#### Pathway activities of Oil signature for every timepoint
+```{r}
+readRDS("output/ccl4_experiment/progeny_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  select(pathway, activity, time) %>%
+  spread(time, activity) %>%
+  write_csv("paper/material/pathway_activities_oil.csv")
+```
+
+#### TF activities of CCL4 signature for every timepoint
+```{r}
+readRDS("output/ccl4_experiment/dorothea_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  select(tf, confidence, activity, time) %>%
+  spread(time, activity) %>%
+  arrange(confidence, tf) %>%
+  write_csv("paper/material/tf_activities_ccl4.csv")
+
+readRDS("output/ccl4_experiment/dorothea_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  select(tf, confidence, activity, time) %>%
+  spread(time, activity) %>%
+  arrange(confidence, tf) %>%
+  mutate(tf = str_to_lower(tf)) %>%
+  filter(str_detect(tf, str_c(f, collapse = "|"))) %>%
+  write_csv("paper/material/tf_activities_ccl4_subsetted.csv")
+```
+
+#### TF activities of Oil signature for every timepoint
+```{r}
+readRDS("output/ccl4_experiment/dorothea_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  select(tf, confidence, activity, time) %>%
+  spread(time, activity) %>%
+  arrange(confidence, tf) %>%
+  write_csv("paper/material/tf_activities_oil.csv")
+
+readRDS("output/ccl4_experiment/dorothea_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  select(tf, confidence, activity, time) %>%
+  spread(time, activity) %>%
+  arrange(confidence, tf) %>%
+  mutate(tf = str_to_lower(tf)) %>%
+  filter(str_detect(tf, str_c(f, collapse = "|"))) %>%
+  write_csv("paper/material/tf_activities_oil_subsetted.csv")
+```
+
+#### GO terms of CCL4 signature for every timepoint
+```{r}
+readRDS("output/ccl4_experiment/go_enrichment.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  select(geneset, category_subcode, NES, time) %>%
+  spread(time, NES) %>%
+  write_csv("paper/material/go_enrichment_ccl4.csv")
+
+readRDS("output/ccl4_experiment/go_enrichment.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  select(geneset, category_subcode, NES, time) %>%
+  spread(time, NES) %>%
+  mutate(geneset = str_to_lower(geneset)) %>%
+  filter(str_detect(geneset, str_c(f, collapse = "|"))) %>%
+  write_csv("paper/material/go_enrichment_ccl4_subsetted.csv")
+```
+
+#### GO terms of Oil signature for every timepoint
+```{r}
+readRDS("output/ccl4_experiment/go_enrichment.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  select(geneset, category_subcode, NES, time) %>%
+  spread(time, NES) %>%
+  write_csv("paper/material/go_enrichment_oil.csv")
+
+readRDS("output/ccl4_experiment/go_enrichment.rds") %>%
+  filter(contrast_reference == "oil") %>%
+  select(geneset, category_subcode, NES, time) %>%
+  spread(time, NES) %>%
+  mutate(geneset = str_to_lower(geneset)) %>%
+  filter(str_detect(geneset, str_c(f, collapse = "|"))) %>%
+  write_csv("paper/material/go_enrichment_oil_subsetted.csv")
+```

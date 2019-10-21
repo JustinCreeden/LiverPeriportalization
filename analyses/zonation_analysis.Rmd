@@ -1,0 +1,488 @@
+---
+title: "Zonation analysis"
+author: "Christian Holland"
+date: "07/02/2019"
+output: html_document
+---
+
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+## Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(scran)
+library(tidyverse)
+library(tidylog)
+library(janitor)
+library(readxl)
+library(limma)
+library(Matrix)
+library(biobroom)
+library(clinfun)
+library(fgsea)
+library(msigdf)
+
+options("tidylog.display" = list(print))
+```
+
+## Zonation: Periportal vs pericentral genes
+### Process external data
+#### Halpern et al.
+##### Working with raw data and assignment of cells manually
+###### Build zonation matrix
+```{r}
+df = read_excel("data/zonation/Halpern/zonation_matrix.xlsx", skip = 1) %>%
+  clean_names() %>%
+  rename(cell = cell_number) %>%
+  mutate(cell = str_to_lower(str_replace(cell, " ", "_"))) %>%
+  gather(layer, prob, -cell) %>%
+  mutate(layer = ordered(parse_number(layer)))
+
+cell_zonation_map = df %>% 
+  group_by(cell) %>%
+  slice(which.max(prob)) %>%
+  ungroup()
+
+saveRDS(cell_zonation_map, "output/zonation/halpern/cell_zonation.rds")
+```
+
+###### Process and normalize count matrix
+```{r}
+count_matrix = read_csv("data/zonation/Halpern/count_matrix.csv") %>%
+  data.frame(row.names = 1) %>%
+  as.matrix() %>%
+  Matrix(sparse=T)
+
+# how oft a gene is expressed?
+apply(count_matrix,1,function(row) {
+  sum(row != 0)
+}
+) %>%
+  enframe() %>%
+  ggplot(aes(x=log10(value+1))) +
+  geom_density() +
+  geom_vline(xintercept = log10(15+1))
+
+# keep only genes that are expressed in more than 15 out of 1415 cells
+keep_genes = apply(count_matrix,1, function(row) {
+      sum(row != 0) >= 15
+})
+
+norm = SingleCellExperiment(list(counts=count_matrix[keep_genes, ])) %>%
+  computeSumFactors() %>%
+  normalize() %>%
+  exprs() 
+
+saveRDS(norm, "output/zonation/halpern/norm_expression.rds")
+```
+
+###### Construct gene sets
+```{r}
+norm = readRDS("output/zonation/halpern/norm_expression.rds")
+cell_zonation = readRDS("output/zonation/halpern/cell_zonation.rds")
+
+x = norm %>% 
+  as.matrix() %>%
+  data.frame() %>%
+  rownames_to_column("gene") %>%
+  as_tibble() %>%
+  gather(cell, expression, -gene) %>%
+  left_join(cell_zonation, by="cell")
+
+# summarizing expression per gene and layer
+summarized_scores = x %>%
+  group_by(gene, layer) %>%
+  summarise(mean_expression = mean(expression)) %>%
+  ungroup() %>%
+  separate_rows(gene, sep = ";")
+
+saveRDS(summarized_scores, "output/zonation/halpern/summarized_scores.rds")
+
+stats = x %>%
+  nest(-gene) %>%
+  mutate(stat = data %>% map(function(data) {
+    jonckheere.test(data$expression, data$layer, alternative = "two.sided") %>%
+      broom::tidy()
+  })) %>%
+  mutate(direction = data %>% map(function(data) {
+    lm(expression~as.integer(layer), data=data) %>%
+      broom::tidy() %>%
+      filter(term == "as.integer(layer)") %>%
+      pull(estimate)
+  })) %>%
+  select(-data) %>%
+  unnest(stat) %>%
+  unnest(direction) %>%
+  mutate(fdr = p.adjust(p.value, method = "BH"))
+
+saveRDS(stats, "output/zonation/halpern/jonck_test.rds")
+
+mgi_symbols = read_csv("data/annotation/mgi_ensembl_entrez.csv") %>%
+  drop_na(mgi_symbol) %>%
+  distinct(gene = mgi_symbol)
+
+
+halpern = stats %>%
+  filter(fdr <= 0.001) %>%
+  mutate(zonation = case_when(sign(direction) == 1 ~ "periportal",
+                              sign(direction) == -1 ~ "pericentral")) %>%
+  mutate(source = "halpern") %>%
+  select(gene, zonation, source) %>%
+  separate_rows(gene, sep = ";") %>%
+  mutate(gene = alias2SymbolTable(gene, species="Mm")) %>%
+  drop_na() %>%
+  distinct() %>%
+  semi_join(mgi_symbols, by="gene")
+
+saveRDS(halpern, "output/zonation/individual_gene_sets/halpern_gene_sets.rds")
+
+```
+
+#### Braeuning et al
+```{r}
+mgi_symbols = read_csv("data/annotation/mgi_ensembl_entrez.csv") %>%
+  drop_na(mgi_symbol) %>%
+  distinct(gene = mgi_symbol)
+
+braeuning = read_excel(
+  "data/zonation/Braeuning/Brauning et al_TableS1_log2ratios.xlsx",
+  col_names = c("accession", "gene_name", "gene", "logfc"), skip = 1
+  ) %>%
+  drop_na() %>%
+  # remove text artefacts (\r and \n)
+  mutate(logfc = str_remove(logfc, "\\\r")) %>%
+  mutate(logfc = str_remove(logfc, "\\\n")) %>%
+  # gene represented by more than one probe are separated
+  separate_rows(logfc, sep="/", convert = T) %>%
+  # remove text artefacts (\r and \n)
+  mutate(gene = str_remove(gene, "\\\r")) %>%
+  mutate(gene = str_remove(gene, "\\\n")) %>%
+  # genes summarized into a single term are seprated (e.g. Raet1a/b/c/d/e)
+  separate_rows(gene, sep ="///") %>%
+  mutate(gene = str_trim(gene)) %>%
+  # update gene symbol
+  mutate(gene = alias2SymbolTable(gene, species = "Mm")) %>%
+  drop_na(gene) %>%
+  # consider only official mgi symbols
+  semi_join(mgi_symbols) %>%
+  group_by(gene) %>%
+  summarise(logfc = mean(logfc)) %>%
+  mutate(source = "braeuning",
+         zonation = case_when(sign(logfc) == 1 ~ "pericentral",
+                              sign(logfc) == -1 ~ "periportal"))
+
+saveRDS(braeuning, "output/zonation/individual_gene_sets/braeuning_gene_sets.rds")
+```
+
+#### Saito et al
+```{r}
+mgi_symbols = read_csv("data/annotation/mgi_ensembl_entrez.csv") %>%
+  drop_na(mgi_symbol) %>%
+  distinct(gene = mgi_symbol)
+
+saito_pericentral_male = read_excel(
+  "data/zonation/Saito/Copy of male zone 3 specific high GO analysis for table (formatted).xls",
+  col_names = c("biological_process", "gene", "alternative_gene_symbol", "gene_name", "logfc")
+  )
+
+saito_pericentral_common = read_excel(
+  "data/zonation/Saito/Copy of zone 3 common high GO analysis for table (formatted).xls",
+  col_names = c("biological_process", "gene", "alternative_gene_symbol", "gene_name", "logfc")
+)
+
+saito_pericentral = bind_rows(saito_pericentral_male, saito_pericentral_common) %>%
+  drop_na(gene) %>%
+  mutate(gene = alias2SymbolTable(gene, species = "Mm")) %>%
+  drop_na(gene) %>%
+  semi_join(mgi_symbols) %>%
+  group_by(gene) %>%
+  summarise(logfc = mean(logfc)) %>%
+  mutate(source = "saito",
+         zonation = "pericentral")
+
+saito_periportal_male = read_excel(
+  "data/zonation/Saito/Copy of male zone 1 specific high GO analysis for table (formatted).xls",
+  col_names = c("biological_process", "gene", "alternative_gene_symbol", "gene_name", "logfc")
+  ) 
+
+saito_periportal_common = read_excel(
+  "data/zonation/Saito/Copy of zone 1 common high GO analysis for table (formatted).xls",
+  col_names = c("biological_process", "gene", "alternative_gene_symbol", "gene_name", "logfc")
+)
+
+saito_periportal = bind_rows(saito_periportal_male, saito_periportal_common) %>%
+  drop_na(gene) %>%
+  mutate(gene = alias2SymbolTable(gene, species = "Mm")) %>%
+  drop_na(gene) %>%
+  semi_join(mgi_symbols) %>%
+  group_by(gene) %>%
+  summarise(logfc = mean(logfc)) %>%
+  mutate(source = "saito",
+         zonation = "periportal")
+
+saito = bind_rows(saito_pericentral, saito_periportal)
+
+saveRDS(saito, "output/zonation/individual_gene_sets/saito_gene_sets.rds")
+```
+
+### Analyse gene sets
+#### Construct consensus periportal and pericentral gene sets
+```{r}
+# We consider genes as gene set member when they appear at least 2 times
+gene_sets = list.files("output/zonation/individual_gene_sets", pattern = "gene_sets", full.names = T) %>%
+  map_df(readRDS) %>%
+  filter(source != "halpern2018") %>%
+  count(gene, zonation) %>%
+  filter(n>=2) %>%
+  distinct(gene, zonation) %>%
+  arrange(zonation, gene)
+
+saveRDS(gene_sets, "output/zonation/consensus_gene_sets.rds")
+```
+
+#### Gene set enrichment analysis with consensus and individuala pc/pp gene et and ccl4/oil signatures
+```{r}
+consensus_zonation_gene_sets = readRDS("output/zonation/consensus_gene_sets.rds") %>%
+  mutate(source = "consensus")
+
+individual_zonation_gene_sets = list.files(
+  "output/zonation/individual_gene_sets", pattern = "gene_sets", full.names = T
+  ) %>%
+  map_df(readRDS) %>%
+  filter(source != "halpern2018") 
+
+zonation_gene_sets = bind_rows(consensus_zonation_gene_sets, 
+                               individual_zonation_gene_sets) %>%
+  unite(source, source, zonation) %>%
+  group_by(source) %>%
+  summarise(gene_set = list(gene)) %>%
+  deframe()
+
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference %in% c("ccl4", "oil")) %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time)))
+
+# GSEA
+set.seed(123)
+gsea_res = limma_result %>%
+  nest(-c(contrast, contrast_reference, time)) %>%
+  mutate(gsea = data %>% map(function(data) {
+    stats = data %>% 
+      select(gene,statistic) %>%
+      deframe()
+    
+    fgsea(pathways = zonation_gene_sets, stats = stats, nperm = 10000) %>%
+      as_tibble() %>%
+      separate(pathway, into = c("source", "zonation"))
+  })) %>%
+  unnest(gsea, .preserve = data)
+
+saveRDS(gsea_res, "output/zonation/consensus_and_ind_gsea_res.rds")
+```
+
+
+#### ORA to characterize consensus gene sets
+```{r}
+dorothea_genesets = read_csv(
+  "https://raw.githubusercontent.com/saezlab/ConservedFootprints/master/data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+) %>%
+  select(-mor, -likelihood) %>%
+  rename(geneset = tf, gene = target) %>%
+  mutate(category_code = "tf",
+         category_subcode = "dorothea") %>%
+  nest(gene, .key="genes")
+
+progeny_genesets = read_csv(
+  "https://raw.githubusercontent.com/saezlab/ConservedFootprints/master/data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv"
+  ) %>%
+  rename(gene = X1) %>%
+  gather(pathway, weight, -gene) %>%
+  filter(weight != 0) %>%
+  select(-weight) %>%
+  rename(geneset = pathway) %>%
+  mutate(category_code = "pathway",
+         category_subcode = "progeny") %>%
+  nest(gene, .key="genes")
+  
+go_genesets = msigdf.mouse %>%
+  filter(category_code == "c5") %>%
+  filter(category_subcode == "bp" | category_subcode == "mf") %>%
+  rename(gene = mouse.symbol) %>%
+  nest(gene, .key="genes") 
+
+kegg_genesets = msigdf.mouse %>%
+  filter(category_code == "c2") %>%
+  filter(str_detect(geneset, "KEGG_")) %>%
+  rename(gene = mouse.symbol) %>%
+  nest(gene, .key="genes") 
+  
+genesets = bind_rows(dorothea_genesets, progeny_genesets, go_genesets, kegg_genesets)
+
+
+conf_matrices = readRDS("output/zonation/consensus_gene_sets.rds") %>%
+  nest(-zonation, .key="signature") %>%
+  mutate(genesets = list(genesets)) %>%
+  mutate(conf_matrices = pmap(., .f=function(signature, genesets, zonation...) {
+    # set = genesets %>% pluck(2,1)
+    genesets %>%
+      mutate(conf_matrix = genes %>% map(function(set) {
+        
+        # "signature" is either the periportal or pericentral gene set
+        # "set" is a classical gene set like GO-term
+        
+        matrix(
+          c(
+            nrow(intersect(set, signature)), nrow(setdiff(set, signature)),
+            nrow(setdiff(signature, set)), 20000 - nrow(signature) - nrow(setdiff(set, signature))
+          ), 
+          nrow = 2, ncol=2, byrow = T, 
+          dimnames = list("Geneset" = c("Member", "Non-Member"),
+                          "PC/PP-Geneset" =  c("Member", "Non-Member"))
+        )
+      })) %>%
+      select(-genes)
+  })) %>%
+  unnest(conf_matrices)
+
+ora_result = conf_matrices %>%
+  mutate(ora = conf_matrix %>% map(~tidy(fisher.test(.)))) %>%
+  unnest(ora) %>%
+  group_by(zonation, category_subcode) %>%
+  mutate(qval = p.adjust(p.value, method = "bonferroni"),
+         fdr = p.adjust(p.value, method = "BH")) %>%
+  ungroup()
+
+saveRDS(ora_result, "output/zonation/ora_result_of_consensus_genesets.rds")
+```
+
+#### Overlap between CCL4/Oil signatures and pericentral and periportal genesets
+```{r}
+zonation_gene_sets = readRDS("output/zonation/consensus_gene_sets.rds")
+pp = zonation_gene_sets %>% filter(zonation == "periportal") %>% pull(gene)
+pc = zonation_gene_sets %>% filter(zonation == "pericentral") %>% pull(gene)
+
+# relax requirement for significant genes (originally effect size 1.5 and fdr 0.05)
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference %in% c("ccl4", "oil")) %>%
+  mutate(regulation = case_when(logFC >= 0.8 & fdr <= 0.2 ~ "up",
+                                logFC <= -0.8 & fdr <= 0.2 ~ "down",
+                                TRUE ~ "no")) %>%
+  filter(regulation != "no") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time)))
+
+# data = overlap_coef_df %>% pluck(5,1)
+overlap_coef_df = limma_result %>%
+  nest(-c(contrast, contrast_reference, time, regulation)) %>%
+  mutate(overlap = data %>% map(function(data) {
+    signature = data %>% pull(gene)
+    
+    # extract common genes
+    pp_common_genes = intersect(pp, signature)
+    pc_common_genes = intersect(pc, signature)
+    
+    # calculate overlap coefficient
+    pp_overlap = length(pp_common_genes) / min(length(pp), length(signature))
+    pc_overlap = length(pc_common_genes) / min(length(pc), length(signature))
+    
+    # summarize results in a tibble
+    overlap_df = tibble(zonation = c("periportal", "pericentral"),
+                        overlap_coef = c(pp_overlap, pc_overlap),
+                        n_common = c(length(pp_common_genes), length(pc_common_genes)),
+                        overlap = list(pp_common_genes, pc_common_genes))
+    
+  }))
+
+saveRDS(overlap_coef_df, "output/zonation/overlap_ccl4_oil_sig_with_pc_pp_genesets.rds")
+```
+
+#### ORA to characterize overlap of ccl4 and oil signature and pericentral and periportal genesets
+```{r}
+signature = readRDS("output/zonation/overlap_ccl4_oil_sig_with_pc_pp_genesets.rds") %>%
+  unnest(overlap) %>%
+  unnest(overlap) %>%
+  # distinct(regulation, time, zonation, overlap) %>%
+  distinct(contrast_reference, regulation, zonation, overlap) %>%
+  rename(gene = overlap) %>%
+  nest(gene, .key="signature")
+
+
+dorothea_genesets = read_csv(
+  "https://raw.githubusercontent.com/saezlab/ConservedFootprints/master/data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+) %>%
+  select(-mor, -likelihood) %>%
+  rename(geneset = tf, gene = target) %>%
+  mutate(category_code = "tf",
+         category_subcode = "dorothea") %>%
+  nest(gene, .key="genes")
+
+progeny_genesets = read_csv(
+  "https://raw.githubusercontent.com/saezlab/ConservedFootprints/master/data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv"
+  ) %>%
+  rename(gene = X1) %>%
+  gather(pathway, weight, -gene) %>%
+  filter(weight != 0) %>%
+  select(-weight) %>%
+  rename(geneset = pathway) %>%
+  mutate(category_code = "pathway",
+         category_subcode = "progeny") %>%
+  nest(gene, .key="genes")
+  
+
+go_genesets = msigdf.mouse %>%
+  filter(category_code == "c5") %>%
+  filter(category_subcode == "bp" | category_subcode == "mf") %>%
+  rename(gene = mouse.symbol) %>%
+  nest(gene, .key="genes") 
+
+kegg_genesets = msigdf.mouse %>%
+  filter(category_code == "c2") %>%
+  filter(str_detect(geneset, "KEGG_")) %>%
+  rename(gene = mouse.symbol) %>%
+  nest(gene, .key="genes") 
+  
+genesets = bind_rows(dorothea_genesets, progeny_genesets, go_genesets, kegg_genesets)
+
+# signature = conf_matrices %>% pluck(3,1)
+# genesets = conf_matrices %>% pluck(4,1)
+conf_matrices = signature %>%
+  mutate(genesets = list(genesets)) %>%
+  mutate(conf_matrices = pmap(., .f=function(signature, genesets, ...) {
+    set = genesets %>% pluck(2,1)
+    genesets %>%
+      mutate(conf_matrix = genes %>% map(function(set) {
+        
+        # "signature" is either the periportal or pericentral gene set
+        # "set" is a classical gene set like GO-term
+        
+        matrix(
+          c(
+            nrow(intersect(set, signature)), nrow(setdiff(set, signature)),
+            nrow(setdiff(signature, set)), 20000 - nrow(signature) - nrow(setdiff(set, signature))
+          ), 
+          nrow = 2, ncol=2, byrow = T, 
+          dimnames = list("Gene-Set" = c("Member", "Non-Member"),
+                          "Gene-Signature" =  c("Member", "Non-Member"))
+        )
+      })) %>%
+      select(-genes)
+  })) %>%
+  unnest(conf_matrices)
+
+ora_result = conf_matrices %>%
+  mutate(ora = conf_matrix %>% map(~tidy(fisher.test(.)))) %>%
+  unnest(ora) %>%
+  group_by(contrast_reference, regulation, zonation, category_subcode) %>%
+  mutate(qval = p.adjust(p.value, method = "bonferroni"),
+         fdr = p.adjust(p.value, method = "BH")) %>%
+  ungroup()
+
+saveRDS(ora_result, "output/zonation/ora_result_of_overlap.rds")
+```

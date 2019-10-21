@@ -1,0 +1,274 @@
+---
+title: "Transcriptome analysis of CCL4 treated mice"
+author: "Christian Holland"
+date: "07/02/2019"
+output: html_document
+---
+
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(edgeR)
+library(biobroom)
+library(msigdf)
+library(fgsea)
+library(furrr)
+library(viper)
+
+source("src/footprint_methods.R")
+```
+
+### Process raw read counts and build design matrix
+#### Tidy count matrix
+```{r "remove genes with 0 count across all samples"}
+meta_df = readRDS("data/ccl4_experiment/meta_df.rds")
+
+count_matrix = read_delim(
+  "data/ccl4_experiment/raw_read_counts.txt", delim = "\t"
+  ) %>%
+  rename(gene = X1)
+
+tidy_count_matrix = count_matrix %>% 
+  gather(sample, count, -gene) %>%
+  inner_join(meta_df, by="sample")
+
+saveRDS(tidy_count_matrix,
+        "output/ccl4_experiment/tidy_count_matrix.rds")
+```
+
+#### Build design matrix
+```{r "build design matrix"}
+meta_df = readRDS("data/ccl4_experiment/meta_df.rds")
+
+design = model.matrix(~0+group, data=meta_df)
+rownames(design) = meta_df$sample
+colnames(design) = levels(meta_df$group)
+
+saveRDS(design, "output/ccl4_experiment/design_matrix.rds")
+```
+
+### Exploratory Analysis
+#### PCA
+```{r "pca"}
+# load data
+expr = readRDS("output/ccl4_experiment/expression_data_tidy.rds")
+
+# find most variable genes (2500)
+top_var_genes = expr %>%
+  group_by(gene) %>%
+  summarise(var = var(expression)) %>%
+  ungroup() %>%
+  arrange(-var) %>%
+  top_n(2500, var) %>%
+  select(gene)
+
+# pca
+dat = expr %>%
+  inner_join(top_var_genes, by="gene") %>%
+  spread(gene, expression)
+
+pca_object = expr %>%
+  inner_join(top_var_genes, by="gene") %>%
+  spread(gene, expression) %>%
+  keep(is.numeric) %>%
+  prcomp(center=T, scale. = T)
+
+explained = round((pca_object$sdev)^2 / sum(pca_object$sdev^2),4) * 100
+
+coords = pca_object$x %>%
+  as_tibble() %>%
+  mutate(sample = dat$sample,
+         time = dat$time,
+         dose = dat$dose,
+         group = dat$group)
+
+saveRDS(list(explained = explained, coords = coords), file = "output/ccl4_experiment/pca.rds")
+```
+
+#### Normalize raw read counts and remove batch effects
+```{r "process raw read counts"}
+# load count and design matrix
+meta_df = readRDS("data/ccl4_experiment/meta_df.rds")
+
+count_matrix = readRDS(
+  "output/ccl4_experiment/tidy_count_matrix.rds"
+  ) %>%
+  select(gene, sample, count) %>% 
+  spread(sample, count) %>%
+  column_to_rownames("gene") %>%
+  DGEList()
+
+design = readRDS("output/ccl4_experiment/design_matrix.rds")
+
+# check if count and design matrix correspond to each other
+stopifnot(identical(colnames(count_matrix), rownames(design)))
+
+# filter low read counts, TMM normalization and logCPM transformation
+keep = filterByExpr(count_matrix, design)
+norm_count_matrix = count_matrix[keep,,keep.lib.sizes=F] %>%
+  calcNormFactors() %>%
+  voom(design = design)
+
+# tidy normalized/batch corrected count matrix
+tidy_expr = norm_count_matrix$E %>%
+  data.frame(check.names = F, stringsAsFactors = F) %>%
+  rownames_to_column("gene") %>%
+  gather(sample, expression, -gene) %>%
+  as_tibble() %>%
+  inner_join(meta_df, by="sample")
+
+saveRDS(tidy_expr,
+        "output/ccl4_experiment/expression_data_tidy.rds")
+```
+
+### Differential expression analysis
+#### Differential gene expression analysis
+```{r "differential gene expression analysis"}
+df = readRDS("output/ccl4_experiment/expression_data_tidy.rds")
+design = readRDS("output/ccl4_experiment/design_matrix.rds")
+
+expr = df %>%
+  select(gene, sample, expression) %>%
+  spread(sample, expression) %>%
+  data.frame(row.names=1, check.names = F, stringsAsFactors = F)
+
+# define contrasts
+contrasts = makeContrasts(
+  # effect of the oil
+  oil_vs_wt_w8 = oil.8 - wt,
+  oil_vs_wt_w48 = oil.48 - wt,
+
+  # treatment vs control regressing out the effect of oil
+  ccl4_vs_wt_w8 = (D0.6.8 - wt) - (oil.8 - wt),
+  ccl4_vs_wt_w24 = (D0.6.24 - wt) - ((oil.8 + oil.48)/2 - wt),
+  ccl4_vs_wt_w48 = (D0.6.48 - wt) - (oil.48 - wt),
+  levels = design
+)
+
+limma_result_tmp = lmFit(expr, design) %>%
+  contrasts.fit(contrasts) %>%
+  eBayes() %>%
+  tidy() %>%
+  select(gene, contrast = term, logFC = estimate, statistic = statistic, pval = p.value) %>%
+  group_by(contrast) %>%
+  mutate(fdr = p.adjust(pval, method = "BH")) %>%
+  ungroup() %>%
+  mutate(contrast = as.character(contrast)) # avoids downstream warnings message binding factor with character (bind_rows)
+
+fdr_cutoff = 0.05
+effect_size_cutoff = 1.5
+limma_result = bind_rows(limma_result_tmp) %>%
+  mutate(contrast = factor(contrast, levels = c("oil_vs_wt_w8",
+                                                "oil_vs_wt_w48",
+                                                "ccl4_vs_wt_w8",
+                                                "ccl4_vs_wt_w24",
+                                                "ccl4_vs_wt_w48"
+                                                ))) %>%
+  mutate(regulation = case_when(
+    logFC >= effect_size_cutoff & fdr <= fdr_cutoff ~ "up",
+    logFC <= -effect_size_cutoff & fdr <= fdr_cutoff ~ "down",
+    TRUE ~ "no")) %>%
+  mutate(regulation = factor(regulation, levels = c("up", "down", "no"))) %>%
+  mutate(contrast_reference = case_when(str_detect(contrast, "oil_") ~ "oil",
+                                        str_detect(contrast, "ccl4") ~ "ccl4"))
+  
+saveRDS(limma_result, "output/ccl4_experiment/limma_result.rds")
+```
+
+### Enrichment analysis
+#### GO enrichment
+```{r "celltype deconvolution with xcell"}
+go_genesets = msigdf.mouse %>%
+  filter(category_code == "c5") %>%
+  filter(category_subcode == "bp" | category_subcode == "mf") %>%
+  rename(gene = mouse.symbol) %>%
+  unite(geneset, category_subcode, geneset, sep="::") %>%
+  group_by(geneset) %>%
+  summarise(genes = list(gene)) %>%
+  deframe() 
+
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference %in% c("ccl4", "oil")) %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time)))
+
+# GSEA
+set.seed(123)
+gsea_res = limma_result %>%
+  nest(-c(contrast, contrast_reference, time)) %>%
+  mutate(gsea = data %>% map(function(data) {
+    stats = data %>% 
+      select(gene,statistic) %>%
+      deframe()
+    
+    fgsea(pathways = go_genesets, stats = stats, nperm = 100000) %>%
+      as_tibble() %>%
+      separate(pathway, into = c("category_subcode", "geneset"), sep = "::")
+  })) %>%
+  unnest(gsea)
+
+saveRDS(gsea_res, "output/ccl4_experiment/go_enrichment.rds")
+```
+
+### Footprint analysis
+#### PROGENy - contrast-wise
+```{r "progeny - contrast-wise"}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference %in% c("ccl4", "oil")) %>%
+  select(gene, contrast_reference, contrast, t = statistic) %>%
+  mutate(time = str_extract(contrast, "\\d+$"),
+         time = as.numeric(time),
+         contrast_reference = str_match(contrast, "^([:alnum:]*)_")[,2]) %>%
+  nest(-contrast_reference)
+
+progeny_matrix = read_csv(
+  "https://raw.githubusercontent.com/saezlab/ConservedFootprints/master/data/progeny_benchmark/models/progeny_matrix_mouse_v1.csv"
+  ) %>%
+  rename(gene = X1) %>%
+  gather(pathway, weight, -gene) %>%
+  filter(weight != 0)
+  
+
+progeny_scores = limma_result %>%
+  mutate(progeny_scores = data %>% map(function(data) {
+    run_progeny(E = data, value_name = "t", id_name = "contrast", 
+                M = progeny_matrix, permutation = 10000) %>%
+      mutate(time = str_extract(contrast, "\\d+$"),
+             time = as.numeric(time))
+  })) %>%
+  unnest(progeny_scores)
+
+saveRDS(progeny_scores, "output/ccl4_experiment/progeny_scores_contrast_wise.rds")
+```
+
+#### DoRothEA - contrast-wise
+```{r "dorothea - contrast-wise"}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference %in% c("ccl4", "oil")) %>%
+  select(gene, contrast_reference, contrast, t = statistic) %>%
+  mutate(time = str_extract(contrast, "\\d+$"),
+         time = as.numeric(time)) %>%
+  nest(-contrast_reference)
+
+dorothea_regulons = read_csv(
+  "https://raw.githubusercontent.com/saezlab/ConservedFootprints/master/data/dorothea_benchmark/regulons/dorothea_regulon_mouse_v1.csv"
+)
+
+dorothea_scores = limma_result %>%
+  mutate(dorothea_scores = data %>% map(function(data) {
+    run_viper(data, dorothea_regulon_mouse_v1, value_name = "t", id_name = "contrast")
+  })) %>%
+  unnest(dorothea_scores)
+
+saveRDS(dorothea_scores, "output/ccl4_experiment/dorothea_scores_contrast_wise.rds")
+```
+

@@ -1,0 +1,203 @@
+---
+title: "Arrange individual figures into a collage"
+author: "Christian Holland"
+date: "6/23/2019"
+output: html_document
+---
+
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(cowplot)
+library(tidylog)
+library(grid)
+library(gridExtra)
+library(scales)
+
+options("tidylog.display" = list(print))
+theme_set(theme_cowplot())
+```
+### CCL4 experiment
+#### CCl4 - Main1
+```{r}
+ccl4_path = "fig/ccl4_experiment/"
+design = ggdraw() +
+  draw_image(str_c(ccl4_path, "experimental_design.jpg"))
+pca_all = readRDS(str_c(ccl4_path, "pca_all_text.rds"))
+volcano = readRDS(str_c(ccl4_path, "volcano_plot_ccl4.rds"))
+top_ccl4_deg = readRDS(str_c(ccl4_path, "top_ccl4_degs.rds"))
+progeny = readRDS(str_c(ccl4_path, "progeny_ccl4.rds"))
+dorothea = readRDS(str_c(ccl4_path, "dorothea_ccl4.rds"))
+
+top_ccl4_deg_collage = plot_grid(
+  plot_grid(
+    top_ccl4_deg$up_8 + theme(plot.margin = margin(0,-0.1,0,0, "cm")), 
+    top_ccl4_deg$down_8 + theme(plot.margin = margin(0,0,0,-0.1, "cm")),
+    align = "h", axis = "tb"
+    ) %>%
+  gridExtra::grid.arrange(top = textGrob("Week 8", 
+                                         gp=gpar(fontsize=14))),
+  NULL,
+  plot_grid(
+    top_ccl4_deg$up_24 + theme(plot.margin = margin(0,-0.1,0,0, "cm")), 
+    top_ccl4_deg$down_24 + theme(plot.margin = margin(0,0,0,-0.1, "cm")),
+    align = "h", axis = "tb"
+    ) %>%
+  gridExtra::grid.arrange(top = textGrob("Week 24", 
+                                         gp=gpar(fontsize=14))),
+  NULL,
+  plot_grid(
+    top_ccl4_deg$up_48 + theme(plot.margin = margin(0,-0.1,0,0, "cm")), 
+    top_ccl4_deg$down_48 + theme(plot.margin = margin(0,0,0,-0.1, "cm")),
+    align = "h", axis = "tb"
+    ) %>%
+  gridExtra::grid.arrange(top = textGrob("Week 48", 
+                                         gp=gpar(fontsize=14))),
+  ncol=5, rel_widths = c(1, 0.1, 1, 0.1, 1)
+)
+
+up = plot_grid(
+  design, pca_all,
+  ncol=2, labels = c("A", "B"), label_size = 18
+)
+
+mid = plot_grid(
+  volcano, progeny, dorothea,
+  rel_widths = c(1,0.4,0.4),
+  ncol=3, labels = c("C", "E", "F"), label_size = 18
+)
+
+
+bottom = plot_grid(
+  top_ccl4_deg_collage, NULL,
+  ncol=2, labels = c("D", "G"), label_size = 18
+)
+
+ccl4_experiment_main1 = plot_grid(
+  up,
+  mid,
+  bottom,
+  ncol=1
+)
+
+ggsave("paper/figures/ccl4_experiment_main1.pdf", 
+       ccl4_experiment_main1,
+       width = 20, height = 20)
+```
+
+#### Oil - Main2
+```{r}
+ccl4_path = "fig/ccl4_experiment/"
+volcano = readRDS(str_c(ccl4_path, "volcano_plot_oil.rds"))
+top_oil_deg = readRDS(str_c(ccl4_path, "top_oil_degs.rds"))
+progeny = readRDS(str_c(ccl4_path, "progeny_oil.rds"))
+dorothea = readRDS(str_c(ccl4_path, "dorothea_oil.rds"))
+
+top_oil_deg_collage = plot_grid(
+  plot_grid(
+    top_oil_deg$up_8 + theme(plot.margin = margin(0,-0.1,0,0, "cm")), 
+    top_oil_deg$down_8 + theme(plot.margin = margin(0,0,0,-0.1, "cm")),
+    align = "h", axis = "tb", rel_widths = c(0.75,1)
+    ) %>%
+  gridExtra::grid.arrange(top = textGrob("Week 8", 
+                                         gp=gpar(fontsize=14))),
+  plot_grid(
+    top_oil_deg$up_48 + theme(plot.margin = margin(0,-0.1,0,0, "cm")), 
+    top_oil_deg$down_48 + theme(plot.margin = margin(0,0,0,-0.1, "cm")),
+    align = "h", axis = "tb", rel_widths = c(0.75,1)
+    ) %>%
+  gridExtra::grid.arrange(top = textGrob("Week 48", 
+                                         gp=gpar(fontsize=14))),
+  ncol=2
+)
+
+
+
+
+up = plot_grid(
+  volcano, progeny, dorothea,
+  rel_widths = c(1,0.4,0.4),
+  ncol=3, labels = c("A", "C", "D"), label_size = 18
+)
+
+
+bottom = plot_grid(
+  top_oil_deg_collage, NULL,
+  ncol=2, labels = c("B", "E"), label_size = 18
+)
+
+ccl4_experiment_main2 = plot_grid(
+  up,
+  bottom,
+  ncol=1
+)
+
+ggsave("paper/figures/ccl4_experiment_main2.pdf", 
+       ccl4_experiment_main2,
+       width = 12, height = 12)
+```
+
+### Zonation
+#### Main
+```{r "in silico benchmark - main"}
+consensus_gsea_ccl4_bar = readRDS("fig/zonation/consensus_pc_pp_gsea_ccl4.rds")
+consensus_gsea_oil_bar = readRDS("fig/zonation/consensus_pc_pp_gsea_oil.rds")
+gsea_plots_ccl4_df = readRDS("fig/zonation/gsea_plots_ccl4.rds")
+gsea_plots_oil_df = readRDS("fig/zonation/gsea_plots_oil.rds")
+
+gsea_plots_ccl4 = plot_grid(plotlist = gsea_plots_ccl4_df$gsea_plots, ncol=2)
+gsea_plots_oil = plot_grid(plotlist = gsea_plots_oil_df$gsea_plots, ncol=2)
+
+zonation_main = plot_grid(
+  gsea_plots_ccl4, gsea_plots_oil, consensus_gsea_ccl4_bar, consensus_gsea_oil_bar,
+  rel_heights = c(3,1),
+  # align = "v", axis = "l",
+  labels = c("A", "C", "B", "D"), label_size = 18)
+
+ggsave("paper/figures/zonation_main.pdf",
+       zonation_main, width = 25, height = 25)
+```
+
+#### Supp1
+```{r}
+pc_venn = readRDS("fig/zonation/pc_venn.rds")
+pp_venn = readRDS("fig/zonation/pp_venn.rds")
+
+zonation_supp1 = plot_grid(
+ pc_venn, NULL, pp_venn, 
+ rel_widths = c(1,0.1,1), ncol=3
+)
+
+ggsave("paper/figures/zonation_supp1.pdf", 
+       zonation_supp1,
+       width = 10, height = 5)
+```
+
+
+#### Supp2
+```{r "in silico benchmark 2 - supp"}
+ccl4 = readRDS("fig/zonation/ind_pc_pp_gsea_ccl4.rds")
+oil = readRDS("fig/zonation/ind_pc_pp_gsea_oil.rds")
+legend = get_legend(ccl4)
+
+zonation_supp2 = plot_grid(
+  NULL,
+  ccl4 + theme(legend.position = "none"), 
+  oil + theme(legend.position = "none"),
+  ncol=1, labels = c("","A", "B"), label_size = 18,
+  rel_heights = c(0.1,1,1)
+  ) + 
+  draw_grob(legend, x=0.33, y=0.475)
+
+ggsave("paper/figures/zonation_supp2.pdf", 
+       zonation_supp2,
+       width = 10, height = 10)
+```
