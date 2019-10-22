@@ -38,7 +38,7 @@ source("src/my_ggplot_themes.R")
 ```
 ### Utility functions
 ```{r}
-make_gsea_plot = function(data, geneset, NES, padj, time, zonation, ...) {
+make_gsea_plot = function(data, geneset, time, zonation, ...) {
     stats_df = data %>%
       rename(stat = statistic) %>%
       arrange(-stat) %>% 
@@ -75,7 +75,6 @@ make_gsea_plot = function(data, geneset, NES, padj, time, zonation, ...) {
     tmp = enrichment %>% 
       filter(abs(running_sum) == max(abs(running_sum)))
     
-    
     g1 = ggplot(data = enrichment, aes(x = rank, y = running_sum)) + 
       geom_hline(yintercept = max(tops), colour = rwth_color("bordeaux"), linetype = "dashed") +
       geom_hline(yintercept = min(bottoms), colour =rwth_color("bordeaux"), linetype = "dashed") +
@@ -97,11 +96,9 @@ make_gsea_plot = function(data, geneset, NES, padj, time, zonation, ...) {
             plot.title = element_text(hjust = 0.5)
             #axis.line.y = element_blank()
             ) +
-      annotate("text", x = c(1,6000,12000) , y = c(max(tops)+0.05, max(tops)+0.05, max(tops)+0.05), label = c(
-        str_c("NES:", round(NES,2), sep = " "),
-        str_c("FDR: ", scientific(padj,3), sep = " "),
-        str_c("n:", length(pathway), sep=" ")),
-        size=5, hjust = 0) +
+      annotate("text", x = c(1) , y = c(max(tops)+0.05), 
+               label = c(str_c("ES =", round(gseaRes$res,3), sep = " ")),
+               size=5, hjust = 0) +
       ggtitle(str_c("Week:",time, "-", str_to_title(zonation), sep = " "))
     
     
@@ -810,7 +807,9 @@ consensus_gsea_ccl4_bar = gsea_res_ccl4 %>%
   scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
   labs(x = "Time in weeks", fill = "Zonation") +
   theme(legend.position = "top") +
-  geom_text(aes(label = str_c("FDR:", scientific(padj,3), sep = " "), y=0.95*NES), color="white", position=position_dodge(width=0), size=4.5) +
+  geom_text(aes(label = str_c("p = ", scientific(pval,3), sep = " "), 
+                y=0.95*NES), color="white", position=position_dodge(width=0), 
+            size=4.5) +
   my_theme(grid = "y")
 
 saveRDS(consensus_gsea_ccl4_bar, "fig/zonation/consensus_pc_pp_gsea_ccl4.rds")
@@ -830,10 +829,33 @@ consensus_gsea_oil_bar = gsea_res_oil %>%
   scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
   labs(x = "Time in weeks", fill = "Zonation") +
   theme(legend.position = "top") +
-  geom_text(aes(label = str_c("FDR:", scientific(padj,3), sep = " "), y=0.95*NES), color="white", position=position_dodge(width=0), size=4.5) +
+  geom_text(aes(label = str_c("p =", scientific(pval,3), sep = " "), 
+                y=0.95*NES), color="white", position=position_dodge(width=0), 
+            size=4.5) +
   my_theme(grid = "y")
 
 saveRDS(consensus_gsea_oil_bar, "fig/zonation/consensus_pc_pp_gsea_oil.rds")
+```
+
+#### Enrichment of consensus gene sets with combined treatment signature
+```{r}
+gsea_res_treatment = readRDS("output/zonation/consensus_and_ind_gsea_res.rds") %>%
+  filter(contrast_reference == "treatment",
+         source == "consensus")
+
+consensus_gsea_treatment_bar = gsea_res_treatment %>% 
+  mutate(zonation = str_to_title(zonation)) %>%
+  ggplot(aes(x=time, y=NES, fill=zonation)) +
+  geom_col(position = position_dodge()) +
+  # coord_flip() +
+  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  labs(x = "Time in weeks", fill = "Zonation") +
+  theme(legend.position = "top") +
+  geom_text(aes(label = str_c("p =", scientific(pval,3), sep = " "), y=0.95*NES),
+            color="white", position=position_dodge(width=0.9), size=4.5) +
+  my_theme(grid = "y")
+
+saveRDS(consensus_gsea_treatment_bar, "fig/zonation/consensus_pc_pp_gsea_treatment.rds")
 ```
 
 #### GSEA plots CCL4
@@ -887,8 +909,8 @@ ind_gsea_ccl4_bar = gsea_res_ccl4_ind %>%
   scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
   labs(x = "Time in weeks", fill = "Zonation") +
   theme(legend.position = "top") +
-  # geom_text(aes(label = str_c("FDR:", scientific(padj,3), sep = " "), y=0.75*NES), color="white", position=position_dodge(width=0.9), size=4, angle = -90) +
-  geom_text(aes(label = gtools::stars.pval(padj), y=0.9*NES), color="white", position=position_dodge(width=0.9), size=5) +
+  geom_text(aes(label = gtools::stars.pval(pval), y=0.9*NES), color="white", 
+            position=position_dodge(width=0.9), size=5) +
   my_theme("y")
 
 saveRDS(ind_gsea_ccl4_bar, "fig/zonation/ind_pc_pp_gsea_ccl4.rds")
@@ -909,10 +931,32 @@ ind_gsea_oil_bar = gsea_res_oil_ind %>%
   scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
   labs(x = "Time in weeks", fill = "Zonation") +
   theme(legend.position = "top") +
-  # geom_text(aes(label = str_c("FDR:", scientific(padj,3), sep = " "), y=0.75*NES), color="white", position=position_dodge(width=0.9), size=4, angle = -90) +
-  geom_text(aes(label = gtools::stars.pval(padj), y=0.9*NES), color="white", position=position_dodge(width=0.9), size=5) +
+  geom_text(aes(label = gtools::stars.pval(padj), y=0.9*NES), color="white", 
+            position=position_dodge(width=0.9), size=5) +
   my_theme("y")
 
 saveRDS(ind_gsea_oil_bar, "fig/zonation/ind_pc_pp_gsea_oil.rds")
+```
+
+#### Enrichment of individual gene sets with combined treatment signature
+```{r}
+gsea_res_treatment_ind = readRDS("output/zonation/consensus_and_ind_gsea_res.rds")%>%
+  filter(contrast_reference == "treatment",
+         source != "consensus")
+
+ind_gsea_treatment_bar = gsea_res_treatment_ind %>% 
+  mutate(zonation = str_to_title(zonation),
+         source = str_to_title(source)) %>%
+  ggplot(aes(x=time, y=NES, fill=zonation)) +
+  geom_col(position=position_dodge()) +
+  facet_rep_wrap(~source) +
+  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  labs(x = "Time in weeks", fill = "Zonation") +
+  theme(legend.position = "top") +
+  geom_text(aes(label = gtools::stars.pval(pval), y=0.9*NES), color="white", 
+            position=position_dodge(width=0.9), size=5) +
+  my_theme("y")
+
+saveRDS(ind_gsea_treatment_bar, "fig/zonation/ind_pc_pp_gsea_treatment.rds")
 ```
 
