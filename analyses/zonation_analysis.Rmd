@@ -265,7 +265,7 @@ zonation_gene_sets = bind_rows(consensus_zonation_gene_sets,
   deframe()
 
 limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
-  filter(contrast_reference %in% c("ccl4", "oil")) %>%
+  filter(contrast_reference %in% c("ccl4", "oil", "treatment")) %>%
   mutate(time = str_extract(contrast, "\\d*$"),
          time = ordered(as.integer(time)))
 
@@ -286,7 +286,6 @@ gsea_res = limma_result %>%
 
 saveRDS(gsea_res, "output/zonation/consensus_and_ind_gsea_res.rds")
 ```
-
 
 #### ORA to characterize consensus gene sets
 ```{r}

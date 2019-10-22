@@ -143,14 +143,19 @@ expr = df %>%
 
 # define contrasts
 contrasts = makeContrasts(
-  # effect of the oil
+  # effect of the oil (effect of oil alone)
   oil_vs_wt_w8 = oil.8 - wt,
   oil_vs_wt_w48 = oil.48 - wt,
 
-  # treatment vs control regressing out the effect of oil
+  # ccl4 vs control regressing out the effect of oil (effect of ccl4 alone)
   ccl4_vs_wt_w8 = (D0.6.8 - wt) - (oil.8 - wt),
   ccl4_vs_wt_w24 = (D0.6.24 - wt) - ((oil.8 + oil.48)/2 - wt),
   ccl4_vs_wt_w48 = (D0.6.48 - wt) - (oil.48 - wt),
+  
+  # treatment vs control (effect of combination of ccl4 and oil)
+  treatment_vs_wt_w8 = D0.6.8 - wt,
+  treatment_vs_wt_w24 = D0.6.24 - wt,
+  treatment_vs_wt_w48 = D0.6.48 - wt,
   levels = design
 )
 
@@ -171,7 +176,10 @@ limma_result = bind_rows(limma_result_tmp) %>%
                                                 "oil_vs_wt_w48",
                                                 "ccl4_vs_wt_w8",
                                                 "ccl4_vs_wt_w24",
-                                                "ccl4_vs_wt_w48"
+                                                "ccl4_vs_wt_w48",
+                                                "treatment_vs_wt_w8",
+                                                "treatment_vs_wt_w24",
+                                                "treatment_vs_wt_w48"
                                                 ))) %>%
   mutate(regulation = case_when(
     logFC >= effect_size_cutoff & fdr <= fdr_cutoff ~ "up",
@@ -179,7 +187,8 @@ limma_result = bind_rows(limma_result_tmp) %>%
     TRUE ~ "no")) %>%
   mutate(regulation = factor(regulation, levels = c("up", "down", "no"))) %>%
   mutate(contrast_reference = case_when(str_detect(contrast, "oil_") ~ "oil",
-                                        str_detect(contrast, "ccl4") ~ "ccl4"))
+                                        str_detect(contrast, "ccl4") ~ "ccl4",
+                                        str_detect(contrast, "treatment") ~ "treatment"))
   
 saveRDS(limma_result, "output/ccl4_experiment/limma_result.rds")
 ```
