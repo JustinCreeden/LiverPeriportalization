@@ -6,6 +6,7 @@
 data/*
 output/*
 fig/*
+paper/*
 paper/material*
 analyses/*misc*
 slides/
