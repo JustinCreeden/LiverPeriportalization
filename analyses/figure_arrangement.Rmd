@@ -194,12 +194,12 @@ zonation_supp1 = plot_grid(
 )
 
 ggsave(
-  "~/Google Drive/Paper/LiverPeriportalization/Cells/Figures/SFigure X.pdf",
+  "~/Google Drive/Paper/LiverPeriportalization/Cells/Figures/SFigure 5.pdf",
   zonation_supp1,
   width=10, height=5)
 
 ggsave(
-  "~/Google Drive/Paper/LiverPeriportalization/Cells/Figures/SFigure X.tiff",
+  "~/Google Drive/Paper/LiverPeriportalization/Cells/Figures/SFigure 5.tiff",
   zonation_supp1,
   width=10, height=5)
 
