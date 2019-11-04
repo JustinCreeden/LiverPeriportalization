@@ -91,7 +91,8 @@ coords = pca_object$x %>%
          dose = dat$dose,
          group = dat$group)
 
-saveRDS(list(explained = explained, coords = coords), file = "output/ccl4_experiment/pca.rds")
+saveRDS(list(explained = explained, coords = coords), 
+        file = "output/ccl4_experiment/pca.rds")
 ```
 
 #### Normalize raw read counts and remove batch effects
@@ -194,8 +195,9 @@ saveRDS(limma_result, "output/ccl4_experiment/limma_result.rds")
 ```
 
 ### Enrichment analysis
-#### GO enrichment
-```{r "celltype deconvolution with xcell"}
+#### GO enrichment of CCL4 and Oil signature
+```{r "go enrichment"}
+# query go-terms (biological process and molecular functions) from msigdb
 go_genesets = msigdf.mouse %>%
   filter(category_code == "c5") %>%
   filter(category_subcode == "bp" | category_subcode == "mf") %>%
