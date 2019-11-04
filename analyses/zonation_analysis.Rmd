@@ -107,10 +107,13 @@ saveRDS(summarized_scores, "output/zonation/halpern/summarized_scores.rds")
 stats = x %>%
   nest(-gene) %>%
   mutate(stat = data %>% map(function(data) {
+    # Testing that expression changes monotonic across the layer axis
     jonckheere.test(data$expression, data$layer, alternative = "two.sided") %>%
       broom::tidy()
   })) %>%
   mutate(direction = data %>% map(function(data) {
+    # exploiting the slope of linear models to identify whether the genes 
+    # expressed increase or decrease monotonically
     lm(expression~as.integer(layer), data=data) %>%
       broom::tidy() %>%
       filter(term == "as.integer(layer)") %>%
@@ -177,7 +180,8 @@ braeuning = read_excel(
          zonation = case_when(sign(logfc) == 1 ~ "pericentral",
                               sign(logfc) == -1 ~ "periportal"))
 
-saveRDS(braeuning, "output/zonation/individual_gene_sets/braeuning_gene_sets.rds")
+saveRDS(braeuning, 
+        "output/zonation/individual_gene_sets/braeuning_gene_sets.rds")
 ```
 
 #### Saito et al
@@ -188,15 +192,18 @@ mgi_symbols = read_csv("data/annotation/mgi_ensembl_entrez.csv") %>%
 
 saito_pericentral_male = read_excel(
   "data/zonation/Saito/Copy of male zone 3 specific high GO analysis for table (formatted).xls",
-  col_names = c("biological_process", "gene", "alternative_gene_symbol", "gene_name", "logfc")
+  col_names = c("biological_process", "gene", "alternative_gene_symbol", 
+                "gene_name", "logfc")
   )
 
 saito_pericentral_common = read_excel(
   "data/zonation/Saito/Copy of zone 3 common high GO analysis for table (formatted).xls",
-  col_names = c("biological_process", "gene", "alternative_gene_symbol", "gene_name", "logfc")
+  col_names = c("biological_process", "gene", "alternative_gene_symbol", 
+                "gene_name", "logfc")
 )
 
-saito_pericentral = bind_rows(saito_pericentral_male, saito_pericentral_common) %>%
+saito_pericentral = bind_rows(saito_pericentral_male, 
+                              saito_pericentral_common) %>%
   drop_na(gene) %>%
   mutate(gene = alias2SymbolTable(gene, species = "Mm")) %>%
   drop_na(gene) %>%
@@ -235,7 +242,8 @@ saveRDS(saito, "output/zonation/individual_gene_sets/saito_gene_sets.rds")
 #### Construct consensus periportal and pericentral gene sets
 ```{r}
 # We consider genes as gene set member when they appear at least 2 times
-gene_sets = list.files("output/zonation/individual_gene_sets", pattern = "gene_sets", full.names = T) %>%
+gene_sets = list.files("output/zonation/individual_gene_sets", 
+                       pattern = "gene_sets", full.names = T) %>%
   map_df(readRDS) %>%
   filter(source != "halpern2018") %>%
   count(gene, zonation) %>%
@@ -248,7 +256,9 @@ saveRDS(gene_sets, "output/zonation/consensus_gene_sets.rds")
 
 #### Gene set enrichment analysis with consensus and individuala pc/pp gene et and ccl4/oil signatures
 ```{r}
-consensus_zonation_gene_sets = readRDS("output/zonation/consensus_gene_sets.rds") %>%
+consensus_zonation_gene_sets = readRDS(
+  "output/zonation/consensus_gene_sets.rds"
+  ) %>%
   mutate(source = "consensus")
 
 individual_zonation_gene_sets = list.files(
@@ -449,6 +459,15 @@ kegg_genesets = msigdf.mouse %>%
   
 genesets = bind_rows(dorothea_genesets, progeny_genesets, go_genesets, kegg_genesets)
 
+# distribution of geneset size per category_subcode
+genesets %>% 
+  transmute(category_subcode, geneset, size = genes %>% map(nrow)) %>%
+  unnest(size) %>%
+  arrange(-size)
+  ggplot(aes(x = size)) +
+  geom_histogram() +
+  facet_wrap(~category_subcode, scales="free")
+
 # signature = conf_matrices %>% pluck(3,1)
 # genesets = conf_matrices %>% pluck(4,1)
 conf_matrices = signature %>%
@@ -458,7 +477,7 @@ conf_matrices = signature %>%
     genesets %>%
       mutate(conf_matrix = genes %>% map(function(set) {
         
-        # "signature" is either the periportal or pericentral gene set
+        # "signature" is either the overlap of deg from oil and ccl4 and periportal or pericentral gene set
         # "set" is a classical gene set like GO-term
         
         matrix(
