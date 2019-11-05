@@ -18,7 +18,7 @@ These libraries and sources are used in this analysis
 library(tidyverse)
 library(cowplot)
 library(tidylog)
-library(RWTHColorPalette) # devtools::install_github("christianholland/RWTHColorPalette")
+library(AachenColorPalette) # devtools::install_github("christianholland/AachenColorPalette")
 library(ggpubr)
 library(UpSetR)
 library(VennDiagram)
@@ -76,12 +76,12 @@ make_gsea_plot = function(data, geneset, time, zonation, ...) {
       filter(abs(running_sum) == max(abs(running_sum)))
     
     g1 = ggplot(data = enrichment, aes(x = rank, y = running_sum)) + 
-      geom_hline(yintercept = max(tops), colour = rwth_color("bordeaux"), linetype = "dashed") +
-      geom_hline(yintercept = min(bottoms), colour =rwth_color("bordeaux"), linetype = "dashed") +
+      geom_hline(yintercept = max(tops), colour = aachen_color("bordeaux"), linetype = "dashed") +
+      geom_hline(yintercept = min(bottoms), colour =aachen_color("bordeaux"), linetype = "dashed") +
       geom_hline(yintercept = 0, colour = "black") +
       geom_segment(aes(x = tmp$rank, y = 0, xend = tmp$rank, yend = tmp$running_sum), 
                    linetype = "dashed") +
-      geom_line(size=1, color = if_else(zonation == "periportal", rwth_color("turquoise"), rwth_color("violet"))) +
+      geom_line(size=1, color = if_else(zonation == "periportal", aachen_color("turquoise"), aachen_color("violet"))) +
       lims(x = c(0, max(rnk) + 1)) +
       labs(y = "Enrichment score (ES)") +
       background_grid(major = "y", minor = "none", size.major = 0.4) +
@@ -104,8 +104,8 @@ make_gsea_plot = function(data, geneset, time, zonation, ...) {
     
     g2 = ggplot(color_df, aes(x=value, y=1)) +
       geom_tile(aes(color=value)) +
-      geom_segment(ticks, mapping = aes(x = rank, y = 1.51, xend = rank, yend = 3.51), size = 0.5, color=rwth_color("black"), alpha=0.5) +
-      scale_color_gradientn(colours = rwth_color(c("bordeaux", "orange", "yellow", "green", "blue", "violet"))) +
+      geom_segment(ticks, mapping = aes(x = rank, y = 1.51, xend = rank, yend = 3.51), size = 0.5, color=aachen_color("black"), alpha=0.5) +
+      scale_color_gradientn(colours = aachen_color(c("bordeaux", "orange", "yellow", "green", "blue", "violet"))) +
       scale_x_continuous(breaks = c(1,5000,10000,15000)) +
       theme(
           # axis.line.y = element_blank(),
@@ -156,7 +156,7 @@ pca_all_1_2_text = ggplot(coords, aes(x=PC1, y=PC2, label=time, color=dose)) +
        y = str_c("PC2 (", explained[2], "%)"),
        color = "Treatment") +
   my_theme(grid = "no") +
-  scale_color_manual(values = rwth_color(c("orange", "petrol", "red")), 
+  scale_color_manual(values = aachen_color(c("orange", "petrol", "red")), 
                      labels = c(expression("Untreated"), expression("Olive oil"), expression(CCl['4']*" + Olive oil"))) +
   theme(
     legend.position = "top",
@@ -188,7 +188,7 @@ up_8 = limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Up-regulated logFC") +
-  scale_fill_manual(values = rwth_color("green")) +
+  scale_fill_manual(values = aachen_color("green")) +
   scale_y_continuous(position = "right", 
                      breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
   theme(legend.position = "none",
@@ -202,7 +202,7 @@ down_8 = limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Down-regulated logFC") +
-  scale_fill_manual(values = rwth_color("blue")) +
+  scale_fill_manual(values = aachen_color("blue")) +
   theme(legend.position = "none",
         axis.text = element_text(size=10),
         axis.title = element_text(size=12)) + 
@@ -216,7 +216,7 @@ up_24 = limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Up-regulated logFC") +
-  scale_fill_manual(values = rwth_color("green")) +
+  scale_fill_manual(values = aachen_color("green")) +
   scale_y_continuous(position = "right", 
                      breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
   theme(legend.position = "none",
@@ -230,7 +230,7 @@ down_24 = limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Down-regulated logFC") +
-  scale_fill_manual(values = rwth_color("blue")) +
+  scale_fill_manual(values = aachen_color("blue")) +
   theme(legend.position = "none",
         axis.text = element_text(size=10),
         axis.title = element_text(size=12)) + 
@@ -244,7 +244,7 @@ up_48= limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Up-regulated logFC") +
-  scale_fill_manual(values = rwth_color("green")) +
+  scale_fill_manual(values = aachen_color("green")) +
   scale_y_continuous(position = "right",
                      breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
   theme(legend.position = "none",
@@ -258,7 +258,7 @@ down_48 = limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Down-regulated logFC") +
-  scale_fill_manual(values = rwth_color("blue")) +
+  scale_fill_manual(values = aachen_color("blue")) +
   theme(legend.position = "none",
         axis.text = element_text(size=10),
         axis.title = element_text(size=12)) + 
@@ -291,7 +291,7 @@ up_8 = limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Up-regulated logFC") +
-  scale_fill_manual(values = rwth_color("green")) +
+  scale_fill_manual(values = aachen_color("green")) +
   scale_y_continuous(position = "right",
                      breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
   theme(legend.position = "none",
@@ -305,7 +305,7 @@ down_8 = limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Down-regulated logFC") +
-  scale_fill_manual(values = rwth_color("blue")) +
+  scale_fill_manual(values = aachen_color("blue")) +
   theme(legend.position = "none",
         axis.text = element_text(size=10),
         axis.title = element_text(size=12)) + 
@@ -318,7 +318,7 @@ up_48= limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Up-regulated logFC") +
-  scale_fill_manual(values = rwth_color("green")) +
+  scale_fill_manual(values = aachen_color("green")) +
   scale_y_continuous(position = "right",
                      breaks = function(x) unique(floor(pretty(seq(0, (max(x) + 1) * 1.1))))) +
   theme(legend.position = "none",
@@ -332,7 +332,7 @@ down_48 = limma_result %>%
   ggplot(aes(x=fct_reorder(gene, logFC), y=-logFC, fill=as_factor(sign(logFC)))) +
   geom_col() +
   labs(x=NULL, y="Down-regulated logFC") +
-  scale_fill_manual(values = rwth_color("blue")) +
+  scale_fill_manual(values = aachen_color("blue")) +
   theme(legend.position = "none",
         axis.text = element_text(size=10),
         axis.title = element_text(size=12)) + 
@@ -371,7 +371,7 @@ volcano_plot_ccl4 = limma_result %>%
   geom_point(size=2) +
   facet_rep_wrap(~label) +
   my_theme(grid = "y") +
-  scale_color_manual(values = rwth_color(c("green", "blue", "black50"))) +
+  scale_color_manual(values = aachen_color(c("green", "blue", "black50"))) +
   scale_alpha_manual(values = c(0.7,0.7,0.2), guide ="none") +
   labs(y = expression(-log['10']*"(p-value)"), color = "Regulation") +
   geom_text(data = deg_count, aes(label = n), size=14/(14/5), show.legend = F) +
@@ -403,7 +403,7 @@ volcano_plot_oil = limma_result %>%
   geom_point(size=2) +
   facet_rep_wrap(~label, repeat.tick.labels = F) +
   my_theme(grid = "y") +
-  scale_color_manual(values = rwth_color(c("green", "blue", "black50"))) +
+  scale_color_manual(values = aachen_color(c("green", "blue", "black50"))) +
   scale_alpha_manual(values = c(0.7,0.7,0.2), guide ="none") +
   labs(y = expression(-log['10']*"(p-value)"), color = "Regulation") +
   geom_text(data = deg_count, aes(label = n), size=14/(14/5), show.legend = F) +
@@ -424,9 +424,9 @@ mat = progeny_scores %>%
   data.frame(row.names = 1, check.names = F, stringsAsFactors = F)
 
 color_breaks = make_div_color_breaks(mat, 
-                                     rwth_color("blue"), 
+                                     aachen_color("blue"), 
                                      "white", 
-                                     rwth_color("green"))
+                                     aachen_color("green"))
 
 progeny_ccl4 = pheatmap(mat,fontsize=12, fontsize_row = 12, 
                         color=color_breaks$colors, breaks = color_breaks$breaks, 
@@ -466,7 +466,7 @@ mat = dorothea_scores %>%
   spread(time, activity) %>%
   data.frame(row.names = 1, check.names = F, stringsAsFactors = F)
 
-color_breaks = make_div_color_breaks(mat, rwth_color("blue"), "white", rwth_color("green"))
+color_breaks = make_div_color_breaks(mat, aachen_color("blue"), "white", aachen_color("green"))
 
 dorothea_ccl4 = pheatmap(mat,fontsize=12, fontsize_row = 12, 
                         color=color_breaks$colors, breaks = color_breaks$breaks, 
@@ -514,9 +514,9 @@ mat = df %>%
 
 
 color_breaks = make_div_color_breaks(mat, 
-                                     rwth_color("blue"), 
+                                     aachen_color("blue"), 
                                      "white", 
-                                     rwth_color("green"))
+                                     aachen_color("green"))
 
 go_ccl4 = pheatmap(mat,fontsize=12, fontsize_row = 12, 
                         color=color_breaks$colors, breaks = color_breaks$breaks, 
@@ -543,7 +543,7 @@ geneset_overview = gene_sets %>%
   ggplot(aes(x=source, y=n, fill=zonation)) +
   geom_bar(stat = "identity", position=position_dodge()) +
   labs(x = "Literature source", y="Count", fill="Zonation") +
-  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  scale_fill_manual(values = aachen_color(c("violet", "turquoise"))) +
   my_theme("y") +
   theme(legend.position = "top")
 
@@ -592,8 +592,8 @@ pp_venn = draw.triple.venn(
   lty = "blank",
   cex = 1,
   fontfamily = rep("sans", 7),
-  fill = rwth_color(c("purple", "orange", "petrol")),
-  cat.col = rwth_color(c("purple", "orange", "petrol")),
+  fill = aachen_color(c("purple", "orange", "petrol")),
+  cat.col = aachen_color(c("purple", "orange", "petrol")),
   cat.cex = 1.1,
   cat.fontfamily = rep("sans", 3)
 ) %>%
@@ -638,8 +638,8 @@ pc_venn = draw.triple.venn(
   fontfamily = rep("sans", 7),
   lty = "blank",
   cex = 1,
-  fill = rwth_color(c("purple", "orange", "petrol")),
-  cat.col = rwth_color(c("purple", "orange", "petrol")),
+  fill = aachen_color(c("purple", "orange", "petrol")),
+  cat.col = aachen_color(c("purple", "orange", "petrol")),
   cat.cex = 1.1,
   cat.fontfamily = rep("sans", 3)
 ) %>% 
@@ -663,7 +663,7 @@ consensus_gsea_ccl4_bar = gsea_res_ccl4 %>%
   ggplot(aes(x=time, y=NES, fill=zonation)) +
   geom_col() +
   # coord_flip() +
-  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  scale_fill_manual(values = aachen_color(c("violet", "turquoise"))) +
   labs(x = "Time in months", fill = "Zonation") +
   theme(legend.position = "top") +
   geom_text(aes(label = str_c("p = ", scientific(pval,3), sep = " "), 
@@ -734,14 +734,14 @@ anno = limma_result %>%
   data.frame(row.names=1, check.names = F, stringsAsFactors = F)
 
 
-color_breaks = make_div_color_breaks(mat, rwth_color("blue"), "white", rwth_color("green"))
+color_breaks = make_div_color_breaks(mat, aachen_color("blue"), "white", aachen_color("green"))
 
 leading_edge_hmap = pheatmap(
   mat,fontsize=12, fontsize_row = 12, color=color_breaks$colors, 
   breaks = color_breaks$breaks, angle_col = 45, cluster_cols = F, 
   border_color = NA, cellwidth = 25, annotation_row = anno, 
-  annotation_colors = list(Zonation = c(Pericentral = rwth_color("violet"),
-                                        Periportal = rwth_color("turquoise")))) %>%
+  annotation_colors = list(Zonation = c(Pericentral = aachen_color("violet"),
+                                        Periportal = aachen_color("turquoise")))) %>%
   as.ggplot()
 
 saveRDS(leading_edge_hmap, "fig/zonation/leading_edge_hmap.rds")
@@ -830,50 +830,50 @@ tab = t %>%
 
 
 # color the words pericentral and periportal
-# tab$grobs[24][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[25][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[26][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[27][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[28][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[29][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[30][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[31][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[32][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[33][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[34][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[35][[1]][["gp"]] = gpar(col = rwth_color("violet"))
-tab$grobs[36][[1]][["gp"]] = gpar(col = rwth_color("turquoise"))
-tab$grobs[37][[1]][["gp"]] = gpar(col = rwth_color("turquoise"))
-tab$grobs[38][[1]][["gp"]] = gpar(col = rwth_color("turquoise"))
-tab$grobs[39][[1]][["gp"]] = gpar(col = rwth_color("turquoise"))
-tab$grobs[40][[1]][["gp"]] = gpar(col = rwth_color("turquoise"))
+# tab$grobs[24][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[25][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[26][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[27][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[28][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[29][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[30][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[31][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[32][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[33][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[34][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[35][[1]][["gp"]] = gpar(col = aachen_color("violet"))
+tab$grobs[36][[1]][["gp"]] = gpar(col = aachen_color("turquoise"))
+tab$grobs[37][[1]][["gp"]] = gpar(col = aachen_color("turquoise"))
+tab$grobs[38][[1]][["gp"]] = gpar(col = aachen_color("turquoise"))
+tab$grobs[39][[1]][["gp"]] = gpar(col = aachen_color("turquoise"))
+tab$grobs[40][[1]][["gp"]] = gpar(col = aachen_color("turquoise"))
 
 # make p italic
 tab$grobs[4][[1]][["gp"]] = gpar(fontface = 4L)
 
 # color KEGG pathway
-tab$grobs[48][[1]][["gp"]] = gpar(col = rwth_color("maygreen"))
-tab$grobs[50][[1]][["gp"]] = gpar(col = rwth_color("maygreen"))
+tab$grobs[48][[1]][["gp"]] = gpar(col = aachen_color("maygreen"))
+tab$grobs[50][[1]][["gp"]] = gpar(col = aachen_color("maygreen"))
 
 # color mf
-tab$grobs[43][[1]][["gp"]] = gpar(col = rwth_color("orange"))
+tab$grobs[43][[1]][["gp"]] = gpar(col = aachen_color("orange"))
 
 # color bp
-tab$grobs[41][[1]][["gp"]] = gpar(col = rwth_color("red"))
-tab$grobs[44][[1]][["gp"]] = gpar(col = rwth_color("red"))
-tab$grobs[45][[1]][["gp"]] = gpar(col = rwth_color("red"))
-tab$grobs[46][[1]][["gp"]] = gpar(col = rwth_color("red"))
-tab$grobs[47][[1]][["gp"]] = gpar(col = rwth_color("red"))
-tab$grobs[49][[1]][["gp"]] = gpar(col = rwth_color("red"))
-tab$grobs[52][[1]][["gp"]] = gpar(col = rwth_color("red"))
-tab$grobs[53][[1]][["gp"]] = gpar(col = rwth_color("red"))
-tab$grobs[54][[1]][["gp"]] = gpar(col = rwth_color("red"))
+tab$grobs[41][[1]][["gp"]] = gpar(col = aachen_color("red"))
+tab$grobs[44][[1]][["gp"]] = gpar(col = aachen_color("red"))
+tab$grobs[45][[1]][["gp"]] = gpar(col = aachen_color("red"))
+tab$grobs[46][[1]][["gp"]] = gpar(col = aachen_color("red"))
+tab$grobs[47][[1]][["gp"]] = gpar(col = aachen_color("red"))
+tab$grobs[49][[1]][["gp"]] = gpar(col = aachen_color("red"))
+tab$grobs[52][[1]][["gp"]] = gpar(col = aachen_color("red"))
+tab$grobs[53][[1]][["gp"]] = gpar(col = aachen_color("red"))
+tab$grobs[54][[1]][["gp"]] = gpar(col = aachen_color("red"))
 
 # color tf
-tab$grobs[42][[1]][["gp"]] = gpar(col = rwth_color("purple"))
-tab$grobs[51][[1]][["gp"]] = gpar(col = rwth_color("purple"))
-tab$grobs[55][[1]][["gp"]] = gpar(col = rwth_color("purple"))
-tab$grobs[56][[1]][["gp"]] = gpar(col = rwth_color("purple"))
+tab$grobs[42][[1]][["gp"]] = gpar(col = aachen_color("purple"))
+tab$grobs[51][[1]][["gp"]] = gpar(col = aachen_color("purple"))
+tab$grobs[55][[1]][["gp"]] = gpar(col = aachen_color("purple"))
+tab$grobs[56][[1]][["gp"]] = gpar(col = aachen_color("purple"))
 
 # make legend
 legend_plot = tibble(source = factor(c("Molecular function (GO)", 
@@ -887,7 +887,7 @@ legend_plot = tibble(source = factor(c("Molecular function (GO)",
   ggplot(aes(x=1, y=1,color=source, fill=source, label = source)) +
   geom_point(size=3, shape=15) +
   # geom_text(size=4) +
-  scale_color_manual(values = rwth_color(c("red", "orange", "maygreen", 
+  scale_color_manual(values = aachen_color(c("red", "orange", "maygreen", 
                                            "purple"))) +
   theme(legend.title = element_blank(),
         legend.position = "bottom",
@@ -930,7 +930,7 @@ ind_gsea_ccl4_bar = gsea_res_ccl4_ind %>%
   ggplot(aes(x=time, y=NES, fill=zonation)) +
   geom_col(position=position_dodge()) +
   facet_rep_wrap(~source) +
-  scale_fill_manual(values = rwth_color(c("violet", "turquoise"))) +
+  scale_fill_manual(values = aachen_color(c("violet", "turquoise"))) +
   labs(x = "Time in months", fill = "Zonation") +
   theme(legend.position = "top") +
   geom_text(aes(label = gtools::stars.pval(pval), y=0.9*NES), color="white", 
