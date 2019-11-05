@@ -278,7 +278,7 @@ dorothea_regulons = read_csv(
 
 dorothea_scores = limma_result %>%
   mutate(dorothea_scores = data %>% map(function(data) {
-    run_viper(data, dorothea_regulon_mouse_v1, value_name = "t", id_name = "contrast")
+    run_viper(data, dorothea_regulons, value_name = "t", id_name = "contrast")
   })) %>%
   unnest(dorothea_scores)
 
