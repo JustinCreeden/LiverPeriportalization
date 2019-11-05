@@ -57,6 +57,43 @@ saveRDS(design, "output/ccl4_experiment/design_matrix.rds")
 ```
 
 ### Exploratory Analysis
+
+#### Normalize raw read counts and remove batch effects
+```{r "process raw read counts"}
+# load count and design matrix
+meta_df = readRDS("data/ccl4_experiment/meta_df.rds")
+
+count_matrix = readRDS(
+  "output/ccl4_experiment/tidy_count_matrix.rds"
+  ) %>%
+  select(gene, sample, count) %>% 
+  spread(sample, count) %>%
+  column_to_rownames("gene") %>%
+  DGEList()
+
+design = readRDS("output/ccl4_experiment/design_matrix.rds")
+
+# check if count and design matrix correspond to each other
+stopifnot(identical(colnames(count_matrix), rownames(design)))
+
+# filter low read counts, TMM normalization and logCPM transformation
+keep = filterByExpr(count_matrix, design)
+norm_count_matrix = count_matrix[keep,,keep.lib.sizes=F] %>%
+  calcNormFactors() %>%
+  voom(design = design)
+
+# tidy normalized/batch corrected count matrix
+tidy_expr = norm_count_matrix$E %>%
+  data.frame(check.names = F, stringsAsFactors = F) %>%
+  rownames_to_column("gene") %>%
+  gather(sample, expression, -gene) %>%
+  as_tibble() %>%
+  inner_join(meta_df, by="sample")
+
+saveRDS(tidy_expr,
+        "output/ccl4_experiment/expression_data_tidy.rds")
+```
+
 #### PCA
 ```{r "pca"}
 # load data
@@ -95,41 +132,6 @@ saveRDS(list(explained = explained, coords = coords),
         file = "output/ccl4_experiment/pca.rds")
 ```
 
-#### Normalize raw read counts and remove batch effects
-```{r "process raw read counts"}
-# load count and design matrix
-meta_df = readRDS("data/ccl4_experiment/meta_df.rds")
-
-count_matrix = readRDS(
-  "output/ccl4_experiment/tidy_count_matrix.rds"
-  ) %>%
-  select(gene, sample, count) %>% 
-  spread(sample, count) %>%
-  column_to_rownames("gene") %>%
-  DGEList()
-
-design = readRDS("output/ccl4_experiment/design_matrix.rds")
-
-# check if count and design matrix correspond to each other
-stopifnot(identical(colnames(count_matrix), rownames(design)))
-
-# filter low read counts, TMM normalization and logCPM transformation
-keep = filterByExpr(count_matrix, design)
-norm_count_matrix = count_matrix[keep,,keep.lib.sizes=F] %>%
-  calcNormFactors() %>%
-  voom(design = design)
-
-# tidy normalized/batch corrected count matrix
-tidy_expr = norm_count_matrix$E %>%
-  data.frame(check.names = F, stringsAsFactors = F) %>%
-  rownames_to_column("gene") %>%
-  gather(sample, expression, -gene) %>%
-  as_tibble() %>%
-  inner_join(meta_df, by="sample")
-
-saveRDS(tidy_expr,
-        "output/ccl4_experiment/expression_data_tidy.rds")
-```
 
 ### Differential expression analysis
 #### Differential gene expression analysis
