@@ -4,9 +4,13 @@
 .Ruserdata
 
 data/*
-output/*
+output/ccl4_experiment/*.rds
+output/zonation/*.rds
+output/zonation/halpern/*.rds
+output/zonation/individual_gene_sets/*.rds
 fig/*
 paper/*
 paper/material*
 analyses/*misc*
 slides/
+*html
