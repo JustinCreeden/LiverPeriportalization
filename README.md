@@ -17,5 +17,5 @@ Analysis script available [here](https://github.com/saezlab/LiverZonation/blob/m
 Analysis script available [here](https://github.com/saezlab/LiverZonation/blob/master/analyses/zonation_analysis.Rmd).
 
 #### Plotting
-We provide also scripts for plotting [individual](https://github.com/saezlab/LiverZonation/blob/master/analyses/plot_figures.Rmd) figures and [collages](https://github.com/saezlab/LiverZonation/blob/master/analyses/figure_arrangement.Rmd).
+We also provide scripts for plotting [individual](https://github.com/saezlab/LiverZonation/blob/master/analyses/plot_figures.Rmd) figures and [collages](https://github.com/saezlab/LiverZonation/blob/master/analyses/figure_arrangement.Rmd).
 
