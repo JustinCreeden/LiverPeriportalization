@@ -19,7 +19,7 @@ These libraries and sources are used in this analysis
 library(tidyverse)
 library(edgeR)
 library(biobroom)
-library(msigdf)
+library(msigdf) # devtools::install_github("toledoem/msigdf")
 library(fgsea)
 library(furrr)
 library(viper)
@@ -29,7 +29,9 @@ source("src/footprint_methods.R")
 
 ### Process raw read counts and build design matrix
 #### Tidy count matrix
-```{r "remove genes with 0 count across all samples"}
+```{r "tidy count matrix"}
+# the column time" reports the timepoints in weeks and not in months
+# the term D0.6 in column "dose" corresponds to a dosis of 0.6 ml/kg CCl4 ~ 1 g/kg CCl4
 meta_df = readRDS("data/ccl4_experiment/meta_df.rds")
 
 count_matrix = read_delim(
@@ -58,8 +60,8 @@ saveRDS(design, "output/ccl4_experiment/design_matrix.rds")
 
 ### Exploratory Analysis
 
-#### Normalize raw read counts and remove batch effects
-```{r "process raw read counts"}
+#### Normalize raw read counts
+```{r "normalize raw read counts"}
 # load count and design matrix
 meta_df = readRDS("data/ccl4_experiment/meta_df.rds")
 

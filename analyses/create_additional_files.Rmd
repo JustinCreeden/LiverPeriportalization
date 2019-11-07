@@ -111,7 +111,7 @@ individual_zonation_gene_sets = list.files(
   "output/zonation/individual_gene_sets", pattern = "gene_sets", full.names = T
   ) %>%
   map_df(readRDS) %>%
-  filter(source != "halpern2018") %>%
+  filter(source != "halpern2018")
   
 
 b = individual_zonation_gene_sets %>% 

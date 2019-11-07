@@ -22,11 +22,12 @@ library(tidylog)
 library(janitor)
 library(readxl)
 library(limma)
+library(org.Mm.eg.db)
 library(Matrix)
 library(biobroom)
 library(clinfun)
 library(fgsea)
-library(msigdf)
+library(msigdf) # devtools::install_github("toledoem/msigdf")
 
 options("tidylog.display" = list(print))
 ```
@@ -463,7 +464,7 @@ genesets = bind_rows(dorothea_genesets, progeny_genesets, go_genesets, kegg_gene
 genesets %>% 
   transmute(category_subcode, geneset, size = genes %>% map(nrow)) %>%
   unnest(size) %>%
-  arrange(-size)
+  arrange(-size) %>%
   ggplot(aes(x = size)) +
   geom_histogram() +
   facet_wrap(~category_subcode, scales="free")
