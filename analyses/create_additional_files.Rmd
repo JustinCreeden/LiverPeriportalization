@@ -1,0 +1,178 @@
+---
+title: "Script to create additional tables/materials"
+author: "Christian Holland"
+date: "6/23/2019"
+output: html_document
+---
+
+```{r "knitr config", cache=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::knit(..., quiet = TRUE)
+```
+### Libraries and sources
+These libraries and sources are used in this analysis 
+```{r "setup", message=F}
+library(tidyverse)
+library(tidylog)
+library(openxlsx)
+
+
+options("tidylog.display" = list(print))
+```
+### Zonation analysis
+
+#### Tab S1: CCL4 signature
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "ccl4" & regulation != "no") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time)/4)) %>%
+  select(time, gene, regulation, logFC, statistic, pval, fdr) %>%
+  arrange(time, logFC)
+
+write_csv(limma_result, 
+          "~/Google Drive/Paper/LiverPeriportalization/Cells/Auxiliary Files/Supplementary Table 1.csv")
+```
+
+#### Tab S2: Pathway activities of CCL4 signature for every timepoint
+```{r}
+progeny_scores = readRDS("output/ccl4_experiment/progeny_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  arrange(time) %>%
+  mutate(time = fct_inorder(str_c("Month:", time/4, sep=" "))) %>%
+  select(pathway, activity, time) %>%
+  spread(time, activity)
+
+write_csv(progeny_scores, 
+          "~/Google Drive/Paper/LiverPeriportalization/Cells/Auxiliary Files/Supplementary Table 2.csv")
+
+# %>%
+  # write_csv("paper/material/pathway_activities_ccl4.csv")
+```
+
+
+#### Tab S3: TF activities of CCL4 signature for every timepoint
+```{r}
+dorothea_scores = readRDS("output/ccl4_experiment/dorothea_scores_contrast_wise.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  # filter(confidence %in% c("A", "B")) %>%
+  mutate(time = fct_inorder(str_c("Month:", time/4, sep=" "))) %>%
+  select(tf, confidence, activity, time) %>%
+  spread(time, activity) %>%
+  arrange(confidence, tf)
+
+write_csv(dorothea_scores,
+          "~/Google Drive/Paper/LiverPeriportalization/Cells/Auxiliary Files/Supplementary Table 3.csv")
+```
+
+#### Tab S4: GO terms of CCL4 signature for every timepoint
+```{r}
+go_terms = readRDS("output/ccl4_experiment/go_enrichment.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  select(geneset, category_subcode, NES, FDR = padj, time) %>%
+  gather(metric, value, NES, FDR) %>%
+  mutate(key = str_c("Month: ",as.numeric(as.character(time))/4, " (", metric, ")")) %>%
+  arrange(time) %>%
+  mutate(key = fct_inorder(key)) %>%
+  select(-time, -metric) %>%
+  spread(key, value) %>%
+  filter(`Month: 2 (FDR)` <= 0.05 | `Month: 6 (FDR)` <= 0.05 | `Month: 12 (FDR)` <= 0.05)
+
+write_csv(go_terms, 
+          "~/Google Drive/Paper/LiverPeriportalization/Cells/Auxiliary Files/Supplementary Table 4.csv")
+```
+
+#### Tab S5: Oil signature
+```{r}
+limma_result = readRDS("output/ccl4_experiment/limma_result.rds") %>%
+  filter(contrast_reference == "oil" & regulation != "no") %>%
+  mutate(time = str_extract(contrast, "\\d*$"),
+         time = ordered(as.integer(time)/4)) %>%
+  select(time, gene, regulation, logFC, statistic, pval, fdr) %>%
+  arrange(time, logFC)
+
+write_csv(limma_result, 
+          "~/Google Drive/Paper/LiverPeriportalization/Cells/Auxiliary Files/Supplementary Table 5.csv")
+```
+
+
+#### Tab S6: Consensus pericentral/periportal gene set
+```{r}
+consensus = readRDS("output/zonation/consensus_gene_sets.rds") %>%
+  select(zonation, gene) %>%
+  mutate(source = "consensus") %>%
+  arrange(zonation, gene)
+
+
+individual_zonation_gene_sets = list.files(
+  "output/zonation/individual_gene_sets", pattern = "gene_sets", full.names = T
+  ) %>%
+  map_df(readRDS) %>%
+  filter(source != "halpern2018")
+  
+
+b = individual_zonation_gene_sets %>% 
+  filter(source == "braeuning") %>%
+  select(zonation, gene, source) %>%
+  arrange(zonation, gene)
+
+s = individual_zonation_gene_sets %>% 
+  filter(source == "saito") %>%
+  select(zonation, gene, source) %>%
+  arrange(zonation, gene)
+
+h = individual_zonation_gene_sets %>% 
+  filter(source == "halpern") %>%
+  select(zonation, gene, source) %>%
+  arrange(zonation, gene)
+
+l = list("Consensus" = consensus,
+         "Braeuning et al." = b, 
+         "Saito et al." = s, 
+         "Halpern et al." = h)
+
+save_path = "~/Google Drive/Paper/LiverPeriportalization/Cells/Auxiliary Files/Supplementary Table 6.xlsx"
+
+write.xlsx(l, save_path)
+```
+
+#### Tab S7: Leading edge analysis
+```{r}
+leading_edge = readRDS("output/zonation/consensus_and_ind_gsea_res.rds") %>%
+  filter(source == "consensus" & contrast_reference == "ccl4") %>%
+  mutate(time = as.numeric(as.character(time))/4) %>%
+  select(time, zonation, leading_edge = leadingEdge) %>%
+  unnest(leading_edge) 
+
+write_csv(leading_edge,
+          "~/Google Drive/Paper/LiverPeriportalization/Cells/Auxiliary Files/Supplementary Table 7.csv")
+  
+```
+
+
+#### Tab S8: Gene sets over-represented in overlap
+```{r}
+ora_result = readRDS("output/zonation/ora_result_of_overlap.rds") %>%
+  filter(contrast_reference == "ccl4") %>%
+  filter(p.value <= 0.05) %>%
+  # filter(fdr <= 0.2) %>%
+  filter(zonation == "pericentral" & regulation == "down" | zonation == "periportal" & regulation == "up") %>%
+  select(zonation, regulation, geneset, source = category_subcode, estimate, p.value, fdr) %>%
+  mutate(source = case_when(source == "bp" ~"biological process",
+                            source == "mf" ~ "molecular function",
+                            source == "cp" ~ "kegg",
+                            TRUE ~ source)) %>%
+  arrange(zonation, regulation, p.value)
+
+key = ora_result %>% group_keys(source) %>% pull()
+ora_result %>% 
+  group_split(source) %>%
+  set_names(key) %>%
+  write.xlsx(., "ora_of_overlap.xlsx")
+
+write_csv(ora_result,
+          "~/Google Drive/Paper/LiverPeriportalization/Cells/Auxiliary Files/Supplementary Table 8.csv")
+```
