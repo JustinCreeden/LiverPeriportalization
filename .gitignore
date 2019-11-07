@@ -12,5 +12,6 @@ fig/*
 paper/*
 paper/material*
 analyses/*misc*
+analyses/create_additional_files.Rmd
 slides/
 *html
