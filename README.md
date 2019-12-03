@@ -12,7 +12,7 @@ Little is known about how liver fibrosis influences lobular zonation. To address
 
 
 ### Analyses & Scripts
-This repository deals exclusively with the analysis of the **CCl4** mouse model. The mouse models of **bile duction ligation** and **mdr2-/-** mentioned in the abstract were analyzed elsewhere. 
+This repository deals exclusively with the analysis of the **CCl4** mouse model. The mouse models of **bile duction ligation** and **mdr2-/-** mentioned in the abstract were analyzed elsewhere. The data to run these analyses will be available upon reasonable request.
 
 #### Analysing transcriptome of CCl4 experiment (Fig. 2)
 Analysis script available [here](https://github.com/saezlab/LiverZonation/blob/master/analyses/ccl4_analysis.Rmd).
