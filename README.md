@@ -1,4 +1,4 @@
-## Influence of liver fibrosis on lobular zonation: replacement of pericentral by periportal features supports adaptation to repeated doses of hepatotoxic compounds
+## Influence of Liver Fibrosis on Lobular Zonation
 
 
 ### Abtract
