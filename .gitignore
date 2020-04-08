@@ -10,7 +10,7 @@ output/zonation/halpern/*.rds
 output/zonation/individual_gene_sets/*.rds
 fig/*
 paper/*
-#paper/material*
+paper/material*
 analyses/*misc*
 analyses/create_additional_files.Rmd
 slides/
