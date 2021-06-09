@@ -9,7 +9,7 @@ Little is known about how liver fibrosis influences lobular zonation. To address
 > Ghallab A, Myllys M, Holland CH, Zaza A, Murad W, Hassan R, Ahmed YA, Abbas T, Abdelrahim EA, Schneider KM, Matz-Soja M, Reinders J, Gebhardt R, Berres ML, Hatting M, Drasdo D, Saez-Rodriguez J, Trautwein C, Hengstler JG. "Influence of Liver Fibrosis on Lobular Zonation." _Cells._ 2019. DOI: [10.3390/cells8121556](https://doi.org/10.3390/cells8121556).
 
 ***
-
+ 
 
 ### Analyses & Scripts
 This repository deals exclusively with the analysis of the **CCl4** mouse model. The mouse models of **bile duction ligation** and **mdr2-/-** mentioned in the abstract were analyzed elsewhere. The data to run these analyses will be available upon reasonable request.
