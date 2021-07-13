@@ -10,23 +10,36 @@ knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_chunk$set(warning = FALSE)
 knitr::opts_chunk$set(message = FALSE)
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
-knitr::knit(..., quiet = TRUE)
+#knitr::knit(..., quiet = TRUE)
 ```
 
 ### Libraries and sources
 These libraries and sources are used in this analysis 
 ```{r "setup", message=F}
 
+##Install packages
+#install.packages("devtools")
+#install.packages("tidyverse")
+#devtools::install_github("toledoem/msigdf")
+#install.packages("furrr")
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+    #install.packages("BiocManager")
+#BiocManager::install("viper")
+#BiocManager::install("edgeR")
+#BiocManager::install("biobroom")
+#BiocManager::install("fgsea")
+#BiocManager::install("viper")
 
 library(tidyverse)
 library(edgeR)
 library(biobroom)
-library(msigdf) # devtools::install_github("toledoem/msigdf")
+library(msigdf)
 library(fgsea)
 library(furrr)
 library(viper)
 
-source("src/footprint_methods.R")
+source("input/footprint_methods.R")
 ```
 
 ### Process raw read counts and build design matrix
